@@ -6,10 +6,8 @@ m' = {D, R, N} and m'_t = (d_D/d_t, d_R/d_t, d_N/d_t).
 """
 
 from typing import Tuple, Callable, Optional
-from dataclasses import dataclass
 
 
-@dataclass
 class TangentVector:
     """
     A tangent vector for a morphism with components {D, R, N}.
@@ -21,10 +19,6 @@ class TangentVector:
     
     The time derivative is m'_t = (d_D/d_t, d_R/d_t, d_N/d_t)
     """
-    
-    D: float  # Domain component
-    R: float  # Range component
-    N: float  # Normal component
     
     def __init__(self, D: float = 0.0, R: float = 0.0, N: float = 0.0):
         """

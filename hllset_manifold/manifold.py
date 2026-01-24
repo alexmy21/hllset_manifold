@@ -6,7 +6,6 @@ as its only restriction.
 """
 
 from typing import Any, Set, Dict, Optional
-import hashlib
 
 
 class Manifold:
