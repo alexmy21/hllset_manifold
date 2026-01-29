@@ -1,0 +1,32 @@
+\contentsline {section}{\numberline {1}Introduction: The Extensional Fallacy}{2}{section.1}%
+\contentsline {section}{\numberline {2}The HLLSet Framework}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}From HyperLogLog to Contextual Sets}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Bell State Similarity (BSS)}{3}{subsection.2.2}%
+\contentsline {section}{\numberline {3}Category Theory Foundations}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}The HLL Category}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Karoubi Completion and Idempotence}{4}{subsection.3.2}%
+\contentsline {section}{\numberline {4}HLLSet Entanglement Theory}{4}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Structural Isomorphism}{4}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Entanglement Probability Bounds}{4}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Applications of Entanglement}{5}{subsection.4.3}%
+\contentsline {section}{\numberline {5}Kinematic Dynamics and Transfer Learning}{5}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Time Evolution}{5}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Cross-Domain Transfer}{6}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Retro-Forward Duality and Noether's Theorem}{6}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Time-Reversible Dynamics}{6}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Noether Current}{6}{subsection.6.2}%
+\contentsline {section}{\numberline {7}The Contextual Selection Principle}{6}{section.7}%
+\contentsline {subsection}{\numberline {7.1}The Fundamental Inversion}{6}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Quantum Measurement Reinterpreted}{7}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Biological Evolution as Contextual Selection}{7}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Consciousness as Self-Selecting Context}{7}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}Cosmological Selection}{8}{subsection.7.5}%
+\contentsline {subsection}{\numberline {7.6}Conservation of Selection Power}{8}{subsection.7.6}%
+\contentsline {subsection}{\numberline {7.7}Experimental Predictions}{8}{subsection.7.7}%
+\contentsline {subsection}{\numberline {7.8}Implementation: Contextual Selection Engine}{8}{subsection.7.8}%
+\contentsline {section}{\numberline {8}Applications and Implications}{8}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Cross-Lingual Translation}{8}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Federated Learning}{9}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Robotic Sensor Fusion}{9}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Quantum-Classical Bridge}{9}{subsection.8.4}%
+\contentsline {section}{\numberline {9}Conclusion: From Counting to Understanding}{9}{section.9}%
