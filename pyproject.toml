@@ -27,6 +27,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 keywords = ["manifold", "morphism", "entanglement", "hllset", "ai", "mathematics"]
+dependencies = [
+    "julia>=0.6.2",
+]
 
 [project.optional-dependencies]
 dev = [
