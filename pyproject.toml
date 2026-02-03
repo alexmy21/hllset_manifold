@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "Cython>=0.29.0", "numpy>=1.24.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -28,10 +28,16 @@ classifiers = [
 ]
 keywords = ["manifold", "morphism", "entanglement", "hllset", "ai", "mathematics"]
 dependencies = [
-    "julia>=0.6.2",
+    "numpy>=1.24.4",
+    "torch>=2.5.1",
+    "Cython>=0.29.0",
 ]
 
 [project.optional-dependencies]
+# Optional Julia backend (legacy, will be deprecated)
+julia = [
+    "julia>=0.6.2",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

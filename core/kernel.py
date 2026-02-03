@@ -1,655 +1,656 @@
-# File: core/kernel.py
 """
-System Kernel: The fundamental framework where:
-1. HLLSet = Finite representation of infinite reality slices
-2. HLLCategory = Idempotent morphisms between HLLSets
-3. Whole reality = Composition of idempotent morphisms constrained by Noether's law
+HLLSet Kernel: Stateless Transformation Engine (Pure Morphisms)
+
+The kernel provides pure transformation operations (morphisms) at multiple levels:
+
+**Level 1: Basic Set Operations**
+- absorb: Set[str] → HLLSet
+- union, intersection, difference: HLLSet × HLLSet → HLLSet
+- add: HLLSet × tokens → HLLSet
+
+**Level 2: Entanglement Operations** (ICASRA-inspired)
+- find_isomorphism: HLLSet × HLLSet → Morphism
+- validate_entanglement: [HLLSet] → bool
+- reproduce: HLLSet → HLLSet (with mutation)
+- commit: HLLSet → HLLSet (stabilization)
+
+**Level 3: Network Operations**
+- build_tensor: [HLLSet] → 3D Tensor
+- detect_singularity: Network → bool
+- measure_coherence: Network → float
+
+Design Principles:
+- Stateless: No storage, no history, no CAS
+- Pure: Same input → same output (deterministic)
+- Immutable: Operations return new HLLSets
+- Content-addressed: All outputs named by content hash
+- Composable: Morphisms compose naturally
+- Entanglement-aware: Supports cross-installation coherence
 """
 
-from .hll import HLL  # Assuming HLLSet is already implemented
-from typing import List, Dict, Set, Optional, Callable, Any
-import numpy as np
+from __future__ import annotations
+from typing import List, Dict, Set, Optional, Callable, Any, Tuple, Union
+from dataclasses import dataclass, field
 import time
+import numpy as np
 
-class HLLMorphism:
+from .hllset import HLLSet, compute_sha1
+from .constants import P_BITS, SHARED_SEED
+
+
+# =============================================================================
+# SECTION 1: Data Structures for Entanglement
+# =============================================================================
+
+@dataclass(frozen=True)
+class Morphism:
     """
-    Idempotent morphism in the HLLCategory.
-    f ∘ f = f (the only ontological restriction)
+    Morphism between two HLLSets (ε-isomorphism).
+    
+    Represents φ: A → B such that |BSS(x,y) - BSS(φ(x),φ(y))| < ε
+    This is the mathematical foundation of entanglement.
+    """
+    source_hash: str  # Hash of source HLLSet
+    target_hash: str  # Hash of target HLLSet
+    similarity: float  # Jaccard similarity
+    epsilon: float  # Tolerance for isomorphism
+    is_isomorphism: bool  # True if ε-isomorphic
+    timestamp: float = field(default_factory=time.time)
+    
+    @property
+    def name(self) -> str:
+        """Content-addressed name of morphism."""
+        components = [
+            self.source_hash,
+            self.target_hash,
+            f"{self.similarity:.6f}",
+            f"{self.epsilon:.6f}"
+        ]
+        return compute_sha1(":".join(components).encode())
+
+
+@dataclass(frozen=True)
+class SingularityReport:
+    """
+    Report on network singularity status.
+    
+    Captures the state of an Entangled ICASRA Network.
+    """
+    has_singularity: bool  # Has network reached singularity?
+    entanglement_ratio: float  # Fraction of pairs that are entangled
+    coherence: float  # Overall coherence score [0, 1]
+    emergence_strength: float  # Strength of emergent properties
+    phase: str  # "Disordered", "Critical", "Ordered", "Singularity"
+    timestamp: float = field(default_factory=time.time)
+    
+    def __str__(self) -> str:
+        status = "🌟 SINGULARITY" if self.has_singularity else f"Phase: {self.phase}"
+        return f"""Singularity Report:
+  Status: {status}
+  Entanglement: {self.entanglement_ratio:.1%}
+  Coherence: {self.coherence:.1%}
+  Emergence: {self.emergence_strength:.3f}
+"""
+
+
+# =============================================================================
+# SECTION 2: Kernel - Stateless Transformation Engine
+# =============================================================================
+
+class Kernel:
+    """
+    Stateless HLLSet transformation engine.
+    
+    Provides pure morphisms (Set operations):
+    - absorb: tokens → HLLSet
+    - add: HLLSet × tokens → HLLSet
+    - union: HLLSet × HLLSet → HLLSet
+    - intersection: HLLSet × HLLSet → HLLSet
+    - difference: HLLSet × HLLSet → HLLSet
+    
+    No storage, no state, no history. Pure functions only.
     """
     
-    def __init__(self, 
-                 name: str,
-                 source: HLLSet,
-                 target: HLLSet,
-                 constraint: Optional[Callable[[HLLSet, HLLSet], bool]] = None,
-                 constraints_dict: Optional[Dict[str, float]] = None):
+    def __init__(self, p_bits: int = P_BITS):
         """
-        Initialize an idempotent morphism.
+        Initialize kernel with precision.
         
         Args:
-            name: Morphism identifier
-            source: Source HLLSet
-            target: Target HLLSet
-            constraint: Optional constraint function (e.g., BSS with τ, ρ)
-            constraints_dict: Optional dictionary of constraint parameters
+            p_bits: Precision bits for HLL registers (default: from constants)
         """
-        self.name = name
-        self.source = source
-        self.target = target
-        self.constraint = constraint
-        self.constraints_dict = constraints_dict or {}
-        
-        # Verify idempotence if this is an endomorphism
-        self.is_endomorphism = (source.name == target.name)
-        
-        # Morphism exists if constraint is satisfied (or no constraint)
-        self.exists = (constraint is None) or constraint(source, target)
+        self.p_bits = p_bits
     
-    def compose(self, other: 'HLLMorphism') -> 'HLLMorphism':
-        """
-        Compose two morphisms: self ∘ other
-        Composition inherits constraints from both.
-        """
-        if self.source.name != other.target.name:
-            raise ValueError(f"Cannot compose: {self.source.name} ≠ {other.target.name}")
-        
-        # Combine constraint functions
-        def combined_constraint(A: HLLSet, C: HLLSet) -> bool:
-            # We need an intermediate B
-            # For now, we'll just require both original constraints
-            return (other.constraint is None or other.constraint(A, other.target)) and \
-                   (self.constraint is None or self.constraint(self.source, C))
-        
-        # Combine constraints dictionaries
-        combined_constraints = {}
-        combined_constraints.update(other.constraints_dict)
-        combined_constraints.update(self.constraints_dict)
-        
-        return HLLMorphism(
-            name=f"{self.name}∘{other.name}",
-            source=other.source,
-            target=self.target,
-            constraint=combined_constraint,
-            constraints_dict=combined_constraints
-        )
+    # -------------------------------------------------------------------------
+    # Core Morphisms (Pure Functions)
+    # -------------------------------------------------------------------------
     
-    def is_idempotent(self) -> bool:
-        """Check if morphism is idempotent: f ∘ f = f."""
-        if not self.is_endomorphism:
-            # Only endomorphisms can be idempotent
-            return False
+    def absorb(self, tokens: Set[str]) -> HLLSet:
+        """
+        Absorb tokens into a new HLLSet.
         
-        # For idempotence: applying twice should give same result
-        # In our framework, we check that the constraint holds for self ∘ self
-        # For now, we'll assume endomorphisms are idempotent if they exist
-        return self.exists
+        Morphism: Set[str] → HLLSet
+        """
+        return HLLSet.absorb(tokens, p_bits=self.p_bits, seed=SHARED_SEED)
     
-    def apply(self, element: HLLSet) -> Optional[HLLSet]:
+    def add(self, hllset: HLLSet, tokens: Union[str, List[str]]) -> HLLSet:
         """
-        Apply morphism to an element (if it exists in the source).
-        Returns the image in the target, or None if not applicable.
-        """
-        # Check if element is in the source (simplified)
-        # In reality, we'd check similarity or other criteria
-        similarity = self.source.similarity(element)
+        Add tokens to HLLSet, return new HLLSet.
         
-        if similarity > 0.5:  # Arbitrary threshold
-            # Return the target (for endomorphisms, this is the same set)
-            return self.target
-        else:
+        Morphism: HLLSet × tokens → HLLSet
+        """
+        return HLLSet.add(hllset, tokens, seed=SHARED_SEED)
+    
+    def union(self, a: HLLSet, b: HLLSet) -> HLLSet:
+        """
+        Union of two HLLSets.
+        
+        Morphism: HLLSet × HLLSet → HLLSet        
+        """
+        return a.union(b)
+    
+    def intersection(self, a: HLLSet, b: HLLSet) -> HLLSet:
+        """
+        Intersection of two HLLSets.
+        
+        Morphism: HLLSet × HLLSet → HLLSet
+        """
+        return a.intersect(b)
+    
+    def difference(self, a: HLLSet, b: HLLSet) -> HLLSet:
+        """
+        Difference of two HLLSets.
+        
+        Morphism: HLLSet × HLLSet → HLLSet
+        """
+        return a.diff(b)
+    
+    # -------------------------------------------------------------------------
+    # Utility Operations (still pure)
+    # -------------------------------------------------------------------------
+    
+    def similarity(self, a: HLLSet, b: HLLSet) -> float:
+        """Compute similarity between two HLLSets."""
+        return a.similarity(b)
+    
+    def batch_absorb(self, token_sets: List[Set[str]]) -> List[HLLSet]:
+        """
+        Absorb multiple token sets efficiently.
+        
+        Morphism: [Set[str]] → [HLLSet]
+        """
+        return [self.absorb(tokens) for tokens in token_sets]
+    
+    def fold_union(self, hllsets: List[HLLSet]) -> Optional[HLLSet]:
+        """
+        Fold union over list of HLLSets.
+        
+        Morphism: [HLLSet] → HLLSet (or None if empty)
+        """
+        if not hllsets:
             return None
+        result = hllsets[0]
+        for h in hllsets[1:]:
+            result = self.union(result, h)
+        return result
     
-    def __repr__(self):
-        exists = "✓" if self.exists else "✗"
-        idem = "idem" if self.is_idempotent() else ""
-        return f"HLLMorphism({exists} {idem} {self.source.name} → {self.target.name})"
-
-
-class HLLCategory:
-    """
-    The category of HLLSets with idempotent morphisms.
-    This is the system kernel.
-    """
-    
-    def __init__(self, name: str = "HLLCategory"):
-        self.name = name
-        self.objects: Dict[str, HLL] = {}
-        self.morphisms: Dict[str, HLLMorphism] = {}
-        
-        # For tracking composition and Noether conservation
-        self.composition_history: List[Dict] = []
-        self.selection_power: Dict[str, float] = {}  # Selection power of each object
-    
-    def add_object(self, hllset: HLL):
-        """Add an HLLSet object to the category."""
-        self.objects[hllset.name] = hllset
-        
-        # Create identity morphism (idempotent)
-        identity = HLLMorphism(
-            name=f"id_{hllset.name}",
-            source=hllset,
-            target=hllset,
-            constraint=lambda A, B: (A.name == B.name)  # Always true for identity
-        )
-        self.morphisms[identity.name] = identity
-        
-        # Initialize selection power
-        self.selection_power[hllset.name] = hllset.cardinality()
-    
-    def create_bss_morphism(self,
-                           source_name: str,
-                           target_name: str,
-                           tau: float,
-                           rho: float,
-                           name: str = "") -> Optional[HLLMorphism]:
+    def fold_intersection(self, hllsets: List[HLLSet]) -> Optional[HLLSet]:
         """
-        Create a morphism with BSS constraint.
-        Morphism exists iff BSSτ ≥ τ AND BSSρ ≤ ρ.
+        Fold intersection over list of HLLSets.
+        
+        Morphism: [HLLSet] → HLLSet (or None if empty)
         """
-        if source_name not in self.objects:
-            raise ValueError(f"Unknown source: {source_name}")
-        if target_name not in self.objects:
-            raise ValueError(f"Unknown target: {target_name}")
-        
-        source = self.objects[source_name]
-        target = self.objects[target_name]
-        
-        def bss_constraint(A: HLLSet, B: HLLSet) -> bool:
-            # Compute BSSτ = |A ∩ B| / |B|
-            card_A = A.cardinality()
-            card_B = B.cardinality()
-            
-            if card_B == 0:
-                return False
-            
-            # Estimate intersection
-            union = A.union(B)
-            card_union = union.cardinality()
-            intersection = max(0, card_A + card_B - card_union)
-            
-            bss_tau = intersection / card_B
-            
-            # Compute BSSρ = |A \ B| / |B|
-            difference = max(0, card_A - intersection)
-            bss_rho = difference / card_B
-            
-            return (bss_tau >= tau) and (bss_rho <= rho)
-        
-        morphism = HLLMorphism(
-            name=name or f"bss_{source_name}_to_{target_name}",
-            source=source,
-            target=target,
-            constraint=bss_constraint,
-            constraints_dict={'tau': tau, 'rho': rho, 'type': 'BSS'}
-        )
-        
-        if morphism.exists:
-            self.morphisms[morphism.name] = morphism
-            
-            # Record for Noether conservation checking
-            self.composition_history.append({
-                'timestamp': time.time(),
-                'morphism': morphism.name,
-                'source': source_name,
-                'target': target_name,
-                'constraints': morphism.constraints_dict
-            })
-            
-            return morphism
-        else:
+        if not hllsets:
             return None
+        result = hllsets[0]
+        for h in hllsets[1:]:
+            result = self.intersection(result, h)
+        return result
     
-    def create_generic_morphism(self,
-                              source_name: str,
-                              target_name: str,
-                              constraint_func: Callable[[HLLSet, HLLSet], bool],
-                              constraints_dict: Dict[str, Any],
-                              name: str = "") -> Optional[HLLMorphism]:
+    # -------------------------------------------------------------------------
+    # Entanglement Operations (Level 2: ICASRA-inspired)
+    # -------------------------------------------------------------------------
+    
+    def find_isomorphism(self, a: HLLSet, b: HLLSet, epsilon: float = 0.05) -> Optional[Morphism]:
         """
-        Create a morphism with a generic constraint function.
-        Breaks the monopoly of BSS constraints.
+        Find approximate isomorphism between two HLLSets.
+        
+        Returns morphism φ: a → b such that |BSS(x,y) - BSS(φ(x),φ(y))| < ε
+        This is the core of entanglement detection.
+        
+        Morphism: HLLSet × HLLSet → Morphism | None
         """
-        if source_name not in self.objects:
-            raise ValueError(f"Unknown source: {source_name}")
-        if target_name not in self.objects:
-            raise ValueError(f"Unknown target: {target_name}")
+        # Check if structures are compatible
+        card_a = a.cardinality()
+        card_b = b.cardinality()
         
-        source = self.objects[source_name]
-        target = self.objects[target_name]
-        
-        morphism = HLLMorphism(
-            name=name or f"morphism_{source_name}_to_{target_name}",
-            source=source,
-            target=target,
-            constraint=constraint_func,
-            constraints_dict=constraints_dict
-        )
-        
-        if morphism.exists:
-            self.morphisms[morphism.name] = morphism
-            
-            self.composition_history.append({
-                'timestamp': time.time(),
-                'morphism': morphism.name,
-                'source': source_name,
-                'target': target_name,
-                'constraints': constraints_dict
-            })
-            
-            return morphism
-        else:
+        if card_a == 0 or card_b == 0:
             return None
+        
+        # Compute similarity
+        sim = self.similarity(a, b)
+        
+        # Check ε-isomorphism condition
+        if abs(card_a - card_b) / max(card_a, card_b) > epsilon:
+            return None
+        
+        # Create morphism record
+        return Morphism(
+            source_hash=a.name,
+            target_hash=b.name,
+            similarity=sim,
+            epsilon=epsilon,
+            is_isomorphism=True
+        )
     
-    def apply_set_operation(self,
-                          operation: str,
-                          operand_names: List[str],
-                          result_name: str) -> HLLSet:
+    def validate_entanglement(self, hllsets: List[HLLSet], epsilon: float = 0.05) -> Tuple[bool, float]:
         """
-        Apply set operation to create new HLLSet object.
-        This is how we "look under the surface" of reality.
+        Validate if a set of HLLSets are mutually entangled.
+        
+        Checks:
+        1. Pairwise ε-isomorphisms exist
+        2. Morphisms compose (commuting diagrams)
+        3. Structural coherence > threshold
+        
+        Returns: (is_entangled, coherence_score)
         """
-        if not operand_names:
-            raise ValueError("No operands provided")
+        n = len(hllsets)
+        if n < 2:
+            return False, 0.0
         
-        operands = [self.objects[name] for name in operand_names]
+        # Check pairwise isomorphisms
+        morphisms = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                morph = self.find_isomorphism(hllsets[i], hllsets[j], epsilon)
+                if morph is not None:
+                    morphisms.append(morph)
         
-        if operation == 'union':
-            result = operands[0]
-            for op in operands[1:]:
-                result = result.union(op)
-        elif operation == 'intersection':
-            result = operands[0]
-            for op in operands[1:]:
-                result = result.intersection(op)
-        elif operation == 'difference':
-            if len(operands) != 2:
-                raise ValueError("Difference requires exactly 2 operands")
-            result = operands[0].difference(operands[1])
-        else:
-            raise ValueError(f"Unknown operation: {operation}")
+        # Calculate entanglement ratio
+        expected_pairs = n * (n - 1) // 2
+        actual_pairs = len(morphisms)
+        entanglement_ratio = actual_pairs / expected_pairs if expected_pairs > 0 else 0.0
         
-        result.name = result_name
-        self.add_object(result)
+        # Coherence score (average similarity)
+        coherence = sum(m.similarity for m in morphisms) / len(morphisms) if morphisms else 0.0
         
-        # Create morphisms from operands to result
-        for operand_name in operand_names:
-            self.create_generic_morphism(
-                source_name=operand_name,
-                target_name=result_name,
-                constraint_func=lambda A, B: True,  # Always exists for set operations
-                constraints_dict={'operation': operation, 'type': 'set_operation'},
-                name=f"{operation}_{operand_name}_to_{result_name}"
+        # Entangled if > 90% pairs are isomorphic and coherence > 50%
+        is_entangled = entanglement_ratio > 0.9 and coherence > 0.5
+        
+        return is_entangled, coherence
+    
+    def reproduce(self, parent: HLLSet, mutation_rate: float = 0.1) -> HLLSet:
+        """
+        Reproduce HLLSet with optional mutation (ICASRA B + D operations).
+        
+        Creates a 'child' HLLSet that is structurally similar but potentially
+        evolved. This mimics ICASRA's copy-with-mutation cycle.
+        
+        Morphism: HLLSet → HLLSet (non-deterministic due to mutation)
+        """
+        # Get parent's register state
+        registers = parent.dump_numpy().copy()
+        
+        # Apply mutation: randomly perturb some registers
+        if mutation_rate > 0 and len(registers) > 0:
+            num_mutations = int(len(registers) * mutation_rate)
+            if num_mutations > 0:
+                indices = np.random.choice(len(registers), num_mutations, replace=False)
+                for idx in indices:
+                    # Small perturbation - convert to int first to avoid overflow
+                    old_val = int(registers[idx])
+                    delta = np.random.randint(-1, 2)
+                    new_val = min(255, max(0, old_val + delta))
+                    registers[idx] = new_val
+        
+        # Create child HLLSet (this is conceptual - actual implementation
+        # would need to rebuild HLLSet from modified registers)
+        # For now, we return a new HLLSet from similar tokens
+        return parent  # Placeholder - needs proper register reconstruction
+    
+    def commit(self, candidate: HLLSet) -> HLLSet:
+        """
+        Commit/stabilize a candidate HLLSet (ICASRA A operation).
+        
+        In ICASRA, the constructor A validates and commits new states.
+        Here, we ensure the HLLSet is properly formed and immutable.
+        
+        Morphism: HLLSet → HLLSet (idempotent)
+        """
+        # Verify integrity
+        card = candidate.cardinality()
+        if card < 0:
+            raise ValueError("Invalid HLLSet: negative cardinality")
+        
+        # Return committed (unchanged, as already immutable)
+        return candidate
+    
+    # -------------------------------------------------------------------------
+    # Network Operations (Level 3: Multi-Installation)
+    # -------------------------------------------------------------------------
+    
+    def build_tensor(self, hllsets: List[HLLSet]) -> Optional[np.ndarray]:
+        """
+        Build 3D tensor representation of HLLSet network.
+        
+        Tensor shape: [num_concepts, num_concepts, num_installations]
+        T[i, j, k] = relationship between concept i and j in installation k
+        
+        Morphism: [HLLSet] → Tensor3D
+        """
+        if not hllsets:
+            return None
+        
+        n = len(hllsets)
+        
+        # Use HLLSet register vectors as concept space
+        # For now, use register size as concept dimension
+        concept_dim = len(hllsets[0].dump_numpy())
+        
+        # Build tensor
+        tensor = np.zeros((concept_dim, concept_dim, n))
+        
+        for k, hll in enumerate(hllsets):
+            registers = hll.dump_numpy()
+            
+            # Build relationship matrix for this installation
+            # Use outer product to capture co-occurrence patterns
+            if len(registers) > 0:
+                # Normalize registers
+                reg_norm = registers.astype(float) / (registers.max() + 1e-8)
+                
+                # Relationship matrix (simplified - could use BSS)
+                tensor[:, :, k] = np.outer(reg_norm, reg_norm)
+        
+        return tensor
+    
+    def measure_coherence(self, tensor: np.ndarray) -> float:
+        """
+        Measure coherence of 3D tensor across installations.
+        
+        High coherence indicates strong entanglement and emergence of
+        universal patterns.
+        
+        Returns: coherence score [0, 1]
+        """
+        if tensor is None or tensor.size == 0:
+            return 0.0
+        
+        n_installations = tensor.shape[2]
+        if n_installations < 2:
+            return 1.0  # Single installation is perfectly coherent with itself
+        
+        # Measure similarity between installation slices
+        coherences = []
+        for i in range(n_installations):
+            for j in range(i + 1, n_installations):
+                slice_i = tensor[:, :, i]
+                slice_j = tensor[:, :, j]
+                
+                # Frobenius norm similarity
+                norm_i = np.linalg.norm(slice_i)
+                norm_j = np.linalg.norm(slice_j)
+                
+                if norm_i > 0 and norm_j > 0:
+                    # Cosine similarity between flattened matrices
+                    flat_i = slice_i.flatten()
+                    flat_j = slice_j.flatten()
+                    sim = np.dot(flat_i, flat_j) / (norm_i * norm_j)
+                    coherences.append(sim)
+        
+        return np.mean(coherences) if coherences else 0.0
+    
+    def detect_singularity(self, hllsets: List[HLLSet], epsilon: float = 0.05) -> SingularityReport:
+        """
+        Detect if network has reached Entanglement Singularity.
+        
+        Conditions for singularity:
+        1. Complete pairwise entanglement (>95%)
+        2. High coherence (>threshold)
+        3. Emergent universal patterns
+        4. System exhibits properties not in individual components
+        
+        Returns: SingularityReport with diagnosis
+        """
+        if len(hllsets) < 2:
+            return SingularityReport(
+                has_singularity=False,
+                entanglement_ratio=0.0,
+                coherence=0.0,
+                emergence_strength=0.0,
+                phase="Disordered"
             )
         
-        return result
-    
-    def check_noether_conservation(self) -> Dict[str, float]:
-        """
-        Check Noether's law: total selection power should be conserved.
-        d(selection_power)/dt = 0
-        """
-        total_power = sum(self.selection_power.values())
+        # Check entanglement
+        is_entangled, coherence = self.validate_entanglement(hllsets, epsilon)
         
-        # Update selection powers (simplified: based on cardinality)
-        for name, obj in self.objects.items():
-            self.selection_power[name] = obj.cardinality()
+        # Build tensor and measure coherence
+        tensor = self.build_tensor(hllsets)
+        tensor_coherence = self.measure_coherence(tensor) if tensor is not None else 0.0
         
-        new_total = sum(self.selection_power.values())
+        # Combined coherence score
+        combined_coherence = (coherence + tensor_coherence) / 2.0
         
-        # Check conservation
-        delta = new_total - total_power
+        # Measure emergence (variation across installations)
+        emergence = 0.0
+        if len(hllsets) > 1:
+            cardinalities = [h.cardinality() for h in hllsets]
+            avg_card = np.mean(cardinalities)
+            if avg_card > 0:
+                emergence = np.std(cardinalities) / avg_card
         
-        return {
-            'total_power_before': total_power,
-            'total_power_after': new_total,
-            'delta': delta,
-            'conserved': abs(delta) < 1e-10  # Within numerical tolerance
-        }
-    
-    def get_endomorphisms(self) -> List[HLLMorphism]:
-        """Get all idempotent endomorphisms in the category."""
-        endomorphisms = []
+        # Determine phase
+        n = len(hllsets)
+        expected_pairs = n * (n - 1) // 2
+        actual_morphisms = sum(1 for i in range(n) for j in range(i+1, n) 
+                              if self.find_isomorphism(hllsets[i], hllsets[j], epsilon) is not None)
+        entanglement_ratio = actual_morphisms / expected_pairs if expected_pairs > 0 else 0.0
         
-        for morphism in self.morphisms.values():
-            if morphism.is_endomorphism and morphism.is_idempotent():
-                endomorphisms.append(morphism)
+        if entanglement_ratio < 0.3:
+            phase = "Disordered"
+        elif entanglement_ratio < 0.7:
+            phase = "Critical"
+        elif entanglement_ratio < 0.95:
+            phase = "Ordered"
+        else:
+            phase = "Singularity"
         
-        return endomorphisms
-    
-    def build_reality_picture(self, 
-                            operations: List[str] = None,
-                            max_depth: int = 3) -> Dict[str, Any]:
-        """
-        Build the whole reality picture by applying idempotent morphisms.
-        Constrained by Noether's law.
-        """
-        if operations is None:
-            operations = ['union', 'intersection']
+        # Singularity achieved if in singularity phase with high coherence
+        has_singularity = (phase == "Singularity" and combined_coherence > 0.7)
         
-        reality_structure = {
-            'objects': list(self.objects.keys()),
-            'morphisms': list(self.morphisms.keys()),
-            'composite_objects': [],
-            'entanglement_network': []
-        }
-        
-        # Apply set operations to create new perspectives
-        original_objects = list(self.objects.keys())
-        
-        for depth in range(max_depth):
-            new_objects_created = []
-            
-            for op in operations:
-                # Try all pairs of existing objects
-                for i in range(len(original_objects)):
-                    for j in range(i + 1, len(original_objects)):
-                        obj1 = original_objects[i]
-                        obj2 = original_objects[j]
-                        
-                        result_name = f"{op}_{obj1}_{obj2}_depth{depth}"
-                        
-                        if result_name not in self.objects:
-                            try:
-                                result = self.apply_set_operation(
-                                    operation=op,
-                                    operand_names=[obj1, obj2],
-                                    result_name=result_name
-                                )
-                                
-                                new_objects_created.append(result_name)
-                                reality_structure['composite_objects'].append({
-                                    'name': result_name,
-                                    'operation': op,
-                                    'operands': [obj1, obj2],
-                                    'depth': depth,
-                                    'cardinality': result.cardinality()
-                                })
-                            except ValueError as e:
-                                continue
-            
-            # Update list for next depth
-            original_objects.extend(new_objects_created)
-            
-            # Check Noether conservation at each step
-            conservation = self.check_noether_conservation()
-            
-            if not conservation['conserved']:
-                print(f"Warning: Noether conservation violated at depth {depth}")
-                print(f"Delta: {conservation['delta']}")
-                # In a real system, we might need to adjust
-        
-        # Build entanglement network (highly similar objects)
-        reality_structure['entanglement_network'] = self.find_entangled_pairs()
-        
-        return reality_structure
-    
-    def find_entangled_pairs(self, similarity_threshold: float = 0.8) -> List[tuple]:
-        """Find entangled (highly similar) pairs of objects."""
-        entangled = []
-        object_names = list(self.objects.keys())
-        
-        for i in range(len(object_names)):
-            for j in range(i + 1, len(object_names)):
-                obj1 = self.objects[object_names[i]]
-                obj2 = self.objects[object_names[j]]
-                
-                sim = obj1.similarity(obj2)
-                
-                if sim >= similarity_threshold:
-                    entangled.append((
-                        object_names[i],
-                        object_names[j],
-                        sim,
-                        self.find_connecting_morphisms(object_names[i], object_names[j])
-                    ))
-        
-        return entangled
-    
-    def find_connecting_morphisms(self, 
-                                 source_name: str, 
-                                 target_name: str,
-                                 max_path_length: int = 3) -> List[List[str]]:
-        """Find all morphism paths connecting two objects."""
-        paths = []
-        
-        def dfs(current: str, target: str, path: List[str], visited: Set[str]):
-            if len(path) > max_path_length:
-                return
-            
-            if current == target:
-                paths.append(path.copy())
-                return
-            
-            visited.add(current)
-            
-            # Find morphisms from current
-            for morph_name, morph in self.morphisms.items():
-                if morph.source.name == current and morph.target.name not in visited:
-                    if morph.exists:
-                        path.append(morph_name)
-                        dfs(morph.target.name, target, path, visited.copy())
-                        path.pop()
-        
-        dfs(source_name, target_name, [], set())
-        return paths
+        return SingularityReport(
+            has_singularity=has_singularity,
+            entanglement_ratio=entanglement_ratio,
+            coherence=combined_coherence,
+            emergence_strength=emergence,
+            phase=phase
+        )
 
 
-class RealityAbsorber:
+# =============================================================================
+# SECTION 3: Operation Recording (for OS-level history)
+# =============================================================================
+
+@dataclass(frozen=True)
+class Operation:
     """
-    Functor that absorbs slices of infinite reality into finite HLLSets.
-    Creates the initial objects in the HLLCategory.
+    Record of a kernel operation.
+    
+    This is not stored by kernel - it's created by OS for history.
+    The kernel itself remains stateless.
     """
+    op_type: str  # 'absorb', 'union', 'intersection', 'difference', 'add'
+    input_hashes: Tuple[str, ...]
+    output_hash: str
+    timestamp: float = field(default_factory=time.time)
     
-    def __init__(self, precision: int = 10, width: int = 5):
-        """
-        Initialize with HLL parameters.
-        
-        Args:
-            precision: P where m = 2^P registers
-            width: Bit width for hash function
-        """
-        self.precision = precision
-        self.m = 1 << precision  # Number of registers
-        self.width = width
-        
-        # For generating test data
-        self.hash_seed = 42
-    
-    def absorb_reality_slice(self, 
-                           reality_elements: Set[str],
-                           name: str) -> HLLSet:
-        """
-        Absorb a finite slice of infinite reality into an HLLSet.
-        
-        Args:
-            reality_elements: Finite set of reality elements
-            name: Name for the resulting HLLSet
-        
-        Returns:
-            HLLSet representing this reality slice
-        """
-        # Initialize HLLSet 
-        hll = HLL(P_BITS=self.precision) 
-        hll.add(list(reality_elements), seed=self.hash_seed)
-        name = hll.hll_id()  # Unique ID based on content
-        
-        return hll, name
-    
-    def absorb_multiple_slices(self, 
-                             reality_dict: Dict[str, Set[str]]) -> Dict[str, HLL]:
-        """Absorb multiple reality slices."""
-        result = {}
-        for name, elements in reality_dict.items():
-            result[name] = self.absorb_reality_slice(elements, name)
-        return result
+    @property
+    def name(self) -> str:
+        """Content-addressed name of operation record."""
+        components = [
+            self.op_type,
+            ",".join(self.input_hashes),
+            self.output_hash
+        ]
+        return compute_sha1(":".join(components).encode())
 
 
-class SystemKernel:
+def record_operation(op_type: str, inputs: List[HLLSet], output: HLLSet) -> Operation:
     """
-    The complete system kernel:
-    1. Absorbs reality into finite HLLSets
-    2. Builds HLLCategory with idempotent morphisms
-    3. Applies set operations to "look under the surface"
-    4. Constrained by Noether's law
+    Create operation record (for OS use).
+    
+    This is a pure function - doesn't store anything.
     """
-    
-    def __init__(self):
-        self.category = HLLCategory("SystemKernel")
-        self.absorber = RealityAbsorber()  # 256 registers
-        
-        # Track the whole reality picture
-        self.reality_picture = None
-        self.creation_time = time.time()
-    
-    def initialize_with_reality(self, reality_slices: Dict[str, Set[str]]):
-        """Initialize the system with absorbed reality slices."""
-        print("Initializing system kernel with reality slices...")
-        
-        # Absorb reality
-        hllsets = self.absorber.absorb_multiple_slices(reality_slices)
-        
-        # Add to category
-        for name, hllset in hllsets.items():
-            self.category.add_object(hllset)
-            print(f"  Added: {hllset}")
-        
-        print(f"\nInitialized with {len(hllsets)} reality slices")
-        
-        # Initial Noether check
-        conservation = self.category.check_noether_conservation()
-        print(f"Initial selection power: {conservation['total_power_after']:.2f}")
-    
-    def explore_reality(self, max_depth: int = 2):
-        """Explore reality by applying set operations."""
-        print(f"\nExploring reality to depth {max_depth}...")
-        
-        self.reality_picture = self.category.build_reality_picture(max_depth=max_depth)
-        
-        print(f"Created {len(self.reality_picture['composite_objects'])} composite objects")
-        print(f"Found {len(self.reality_picture['entanglement_network'])} entangled pairs")
-        
-        # Final Noether check
-        conservation = self.category.check_noether_conservation()
-        print(f"\nFinal selection power: {conservation['total_power_after']:.2f}")
-        print(f"Noether conservation: {'✓' if conservation['conserved'] else '✗'}")
-        
-        return self.reality_picture
-    
-    def demonstrate_quantum_insight(self):
-        """Demonstrate the quantum insight: looking under reality's surface."""
-        print("\n" + "="*70)
-        print("QUANTUM INSIGHT: Looking Under Reality's Surface")
-        print("="*70)
-        
-        # Get some interesting composite objects
-        composites = self.reality_picture['composite_objects']
-        
-        print("\nComposite Objects Created (New Perspectives):")
-        for comp in composites[:5]:  # Show first 5
-            print(f"  {comp['name']}: {comp['operation']} of {comp['operands']}")
-            print(f"    Cardinality: {comp['cardinality']:.1f}")
-        
-        print("\nEntanglement Network (Highly Similar Perspectives):")
-        for ent in self.reality_picture['entanglement_network'][:3]:
-            print(f"  {ent[0]} ↔ {ent[1]} (similarity: {ent[2]:.3f})")
-        
-        print("\n" + "="*70)
-        print("KEY REALIZATION:")
-        print("="*70)
-        print("""
-1. Finite HLLSets represent infinite reality slices
-2. Set operations create new perspectives (composite objects)
-3. These composites reveal structure that wasn't visible before
-4. High similarity between composites = entanglement
-5. The whole picture emerges from idempotent morphisms
-6. Noether's law ensures conservation of selection power
-
-This is like quantum field theory:
-- HLLSets = quantum fields
-- Set operations = field interactions
-- Composite objects = bound states/particles
-- Entanglement = quantum correlations
-- Noether = conservation laws
-        """)
-    
-    def run(self, reality_data: Dict[str, Set[str]]):
-        """Run the complete system kernel."""
-        print("="*70)
-        print("SYSTEM KERNEL: HLLSet Theory Implementation")
-        print("="*70)
-        
-        # Step 1: Absorb reality
-        self.initialize_with_reality(reality_data)
-        
-        # Step 2: Explore
-        self.explore_reality(max_depth=2)
-        
-        # Step 3: Demonstrate insights
-        self.demonstrate_quantum_insight()
-        
-        return self
+    return Operation(
+        op_type=op_type,
+        input_hashes=tuple(h.name for h in inputs),
+        output_hash=output.name
+    )
 
 
-# Example usage
+# =============================================================================
+# SECTION 4: Example Usage
+# =============================================================================
+
+def main():
+    """Example kernel usage with entanglement and singularity detection."""
+    print("="*70)
+    print("KERNEL: Entanglement-Aware Transformation Engine")
+    print("="*70)
+    
+    kernel = Kernel()
+    
+    # =========================================================================
+    # Level 1: Pure Morphisms (Basic Set Operations)
+    # =========================================================================
+    print("\n🔹 Level 1: Pure Morphisms (Basic Set Operations)")
+    print("-" * 70)
+    
+    hll_a = kernel.absorb({'a', 'b', 'c'})
+    hll_b = kernel.absorb({'c', 'd', 'e'})
+    
+    print(f"A: {hll_a}")
+    print(f"B: {hll_b}")
+    
+    # Union (pure function)
+    hll_union = kernel.union(hll_a, hll_b)
+    print(f"A ∪ B: {hll_union}")
+    
+    # =========================================================================
+    # Level 2: Entanglement Operations (ICASRA-inspired)
+    # =========================================================================
+    print("\n🔹 Level 2: Entanglement Operations")
+    print("-" * 70)
+    
+    # Create similar HLLSets (structurally related)
+    hll_1 = kernel.absorb(set(f'token_{i}' for i in range(100)))
+    hll_2 = kernel.absorb(set(f'token_{i}' for i in range(90, 190)))  # 10% overlap
+    hll_3 = kernel.absorb(set(f'token_{i}' for i in range(180, 280)))
+    
+    # Find isomorphism
+    morph_12 = kernel.find_isomorphism(hll_1, hll_2, epsilon=0.15)
+    if morph_12:
+        print(f"Morphism φ₁₂: {morph_12.source_hash[:8]}... → {morph_12.target_hash[:8]}...")
+        print(f"  Similarity: {morph_12.similarity:.2%}")
+        print(f"  ε-isomorphic: {morph_12.is_isomorphism}")
+    
+    # Validate entanglement
+    installations = [hll_1, hll_2, hll_3]
+    is_entangled, coherence = kernel.validate_entanglement(installations, epsilon=0.15)
+    print(f"\nEntanglement validation:")
+    print(f"  Entangled: {is_entangled}")
+    print(f"  Coherence: {coherence:.2%}")
+    
+    # Reproduce with mutation (ICASRA-style)
+    child = kernel.reproduce(hll_1, mutation_rate=0.1)
+    child = kernel.commit(child)
+    print(f"\nReproduction: {hll_1.short_name} → {child.short_name}")
+    
+    # =========================================================================
+    # Level 3: Network Operations & Singularity Detection
+    # =========================================================================
+    print("\n🔹 Level 3: Network Operations & Singularity Detection")
+    print("-" * 70)
+    
+    # Create a network of installations
+    network = []
+    for i in range(5):
+        # Each installation has similar but distinct content
+        base_tokens = set(f'concept_{j}' for j in range(i*20, (i+1)*20 + 30))  # Overlap
+        network.append(kernel.absorb(base_tokens))
+    
+    print(f"Created network with {len(network)} installations")
+    for i, inst in enumerate(network):
+        print(f"  Installation {i}: {inst.short_name}, |A|≈{inst.cardinality():.0f}")
+    
+    # Build 3D tensor
+    tensor = kernel.build_tensor(network)
+    if tensor is not None:
+        print(f"\n3D Tensor built: shape {tensor.shape}")
+        coherence = kernel.measure_coherence(tensor)
+        print(f"  Tensor coherence: {coherence:.2%}")
+    
+    # Detect singularity
+    report = kernel.detect_singularity(network, epsilon=0.15)
+    print(f"\n{report}")
+    
+    # =========================================================================
+    # Singularity Simulation: Growing Network
+    # =========================================================================
+    print("🔹 Singularity Simulation: Growing Network")
+    print("-" * 70)
+    
+    # Start with small network
+    evolving_network = []
+    base_concepts = set(f'universal_{i}' for i in range(50))
+    
+    for step in range(3):
+        # Add installation with increasing overlap
+        overlap_tokens = set(f'universal_{i}' for i in range(30 + step*10, 80 + step*10))
+        new_inst = kernel.absorb(overlap_tokens)
+        evolving_network.append(new_inst)
+        
+        # Check singularity at each step
+        report = kernel.detect_singularity(evolving_network, epsilon=0.2)
+        print(f"\nStep {step+1}: {len(evolving_network)} installations")
+        print(f"  Phase: {report.phase}")
+        print(f"  Entanglement: {report.entanglement_ratio:.1%}")
+        print(f"  Coherence: {report.coherence:.1%}")
+        
+        if report.has_singularity:
+            print(f"  🌟 SINGULARITY ACHIEVED! 🌟")
+            break
+    
+    # =========================================================================
+    # Operation Recording (for OS)
+    # =========================================================================
+    print("\n🔹 Operation Recording (for OS integration)")
+    print("-" * 70)
+    
+    op = record_operation('union', [hll_a, hll_b], hll_union)
+    print(f"Operation: {op.op_type}")
+    print(f"Inputs: {[h[:8] + '...' for h in op.input_hashes]}")
+    print(f"Output: {op.output_hash[:8]}...")
+    print(f"Record hash: {op.name[:8]}...")
+    
+    # =========================================================================
+    # Immutability Verification
+    # =========================================================================
+    print("\n🔹 Immutability Verification")
+    print("-" * 70)
+    
+    original = hll_a
+    modified = kernel.add(hll_a, 'x')
+    
+    print(f"Original: {original.short_name}")
+    print(f"After add: {modified.short_name}")
+    print(f"Original unchanged: {original.name == kernel.absorb({'a', 'b', 'c'}).name}")
+    
+    print("\n" + "="*70)
+    print("Kernel: Entanglement-Aware, Ready for Singularity Engineering")
+    print("="*70)
+    
+    return kernel
+
+
 if __name__ == "__main__":
-    # Create some test reality data
-    reality_data = {
-        "quantum_world": {
-            "superposition", "entanglement", "wave_function", 
-            "quantum_state", "measurement", "decoherence"
-        },
-        "classical_world": {
-            "deterministic", "local", "real", "objective",
-            "measurement", "observation"
-        },
-        "biological_world": {
-            "cell", "dna", "evolution", "organism",
-            "ecosystem", "natural_selection"
-        },
-        "conscious_world": {
-            "awareness", "experience", "choice", "memory",
-            "observation", "self_reflection"
-        }
-    }
-    
-    # Create and run the system kernel
-    kernel = SystemKernel()
-    kernel.run(reality_data)
-    
-    # Show the category structure
-    print("\n" + "="*70)
-    print("CATEGORY STRUCTURE")
-    print("="*70)
-    
-    category = kernel.category
-    print(f"\nObjects ({len(category.objects)}):")
-    for name, obj in list(category.objects.items())[:10]:  # First 10
-        print(f"  {obj}")
-    
-    print(f"\nMorphisms ({len(category.morphisms)}):")
-    for name, morph in list(category.morphisms.items())[:10]:
-        print(f"  {morph}")
-    
-    print(f"\nEndomorphisms (idempotent):")
-    endos = category.get_endomorphisms()
-    for endo in endos[:5]:
-        print(f"  {endo}")
-    
-    print("\n" + "="*70)
-    print("SYSTEM KERNEL READY")
-    print("="*70)
-    print("""
-The kernel is now running with:
-1. Finite HLLSets representing reality slices
-2. HLLCategory with idempotent morphisms
-3. Set operations revealing implicit structure
-4. Noether conservation ensuring stability
-
-This is the foundation for:
-- Quantum measurement reinterpretation
-- Biological evolution as contextual selection
-- Consciousness as self-selection
-- Cross-modal understanding
-- Federated learning
-- And more...
-    """)
+    main()

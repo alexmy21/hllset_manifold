@@ -460,6 +460,7 @@ module HllSets
     Base.show(io::IO, x::HllSet{P}) where {P} = println(io, "HllSet{$(P)}()")
 
     Base.sizeof(::Type{HllSet{P}}) where {P} = 1 << P
-    Base.sizeof(x::HllSet{P}) where {P} = sizeof(typeof(x))   
+    Base.sizeof(x::HllSet{P}) where {P} = sizeof(typeof(x))
+    Base.length(x::HllSet{P}) where {P} = length(x.counts)
 
 end
