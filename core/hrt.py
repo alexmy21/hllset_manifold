@@ -215,8 +215,8 @@ class BasicHLLSet:
         """
         if other.hllset.cardinality() == 0:
             return 0.0
-        intersection = self.hllset.intersection_cardinality(other.hllset)
-        return intersection / other.hllset.cardinality()
+        intersection_card = self.hllset.intersect(other.hllset).cardinality()
+        return intersection_card / other.hllset.cardinality()
     
     def bss_rho(self, other: BasicHLLSet) -> float:
         """
@@ -229,7 +229,8 @@ class BasicHLLSet:
         """
         if other.hllset.cardinality() == 0:
             return 0.0
-        difference = self.hllset.cardinality() - self.hllset.intersection_cardinality(other.hllset)
+        intersection_card = self.hllset.intersect(other.hllset).cardinality()
+        difference = self.hllset.cardinality() - intersection_card
         return difference / other.hllset.cardinality()
     
     def has_morphism_to(self, other: BasicHLLSet) -> bool:
@@ -361,7 +362,150 @@ class HLLSetLattice:
             col_basic=tuple(new_cols)
         )
     
+    def _compute_node_degrees(self) -> Tuple[List[int], List[int]]:
+        """
+        Compute node degrees (number of morphisms) for each basic HLLSet.
+        
+        Returns:
+            (row_degrees, col_degrees): Lists of out-degrees for each node
+        """
+        row_degrees = []
+        col_degrees = []
+        
+        # Row degrees: count morphisms from each row to all columns
+        for r in self.row_basic:
+            degree = sum(1 for c in self.col_basic if r.has_morphism_to(c))
+            row_degrees.append(degree)
+        
+        # Column degrees: count morphisms from each column to all rows
+        for c in self.col_basic:
+            degree = sum(1 for r in self.row_basic if c.has_morphism_to(r))
+            col_degrees.append(degree)
+        
+        return row_degrees, col_degrees
+    
+    def compare_lattices(self, other: 'HLLSetLattice') -> Dict[str, float]:
+        """
+        Standardized lattice comparison for dual-lattice systems.
+        
+        Compares two lattices by STRUCTURE (graph topology), not by node content.
+        Since cross-modal lattices have mutually exclusive HLLSets (disjoint token
+        spaces), we compare by structural properties like node degrees.
+        
+        Algorithm:
+        1. Compute node degrees (morphism counts) in each lattice
+        2. Match nodes by degree similarity (simplified structural matching)
+        3. Measure structural alignment using degree correlation
+        
+        Returns:
+            dict with keys:
+                - 'row_degree_correlation': Pearson correlation of row degrees
+                - 'col_degree_correlation': Pearson correlation of col degrees
+                - 'overall_structure_match': Combined structural similarity
+                - 'epsilon_isomorphic_prob': Probability of ε-isomorphism by structure
+                - 'row_degree_distance': Normalized L1 distance of row degrees
+                - 'col_degree_distance': Normalized L1 distance of col degrees
+        """
+        if len(self.row_basic) != len(other.row_basic):
+            raise ValueError("Lattices must have same dimension")
+        
+        # Compute degrees for both lattices
+        self_row_deg, self_col_deg = self._compute_node_degrees()
+        other_row_deg, other_col_deg = other._compute_node_degrees()
+        
+        # Compute degree correlations (structural similarity)
+        row_corr = self._degree_correlation(self_row_deg, other_row_deg)
+        col_corr = self._degree_correlation(self_col_deg, other_col_deg)
+        
+        # Compute degree distances (normalized L1)
+        row_dist = self._degree_distance(self_row_deg, other_row_deg)
+        col_dist = self._degree_distance(self_col_deg, other_col_deg)
+        
+        # Overall structural match (average correlation)
+        overall_match = (row_corr + col_corr) / 2.0
+        
+        # ε-isomorphism probability based on structural similarity
+        # High correlation + low distance → high ε-isomorphic probability
+        epsilon = self.config.epsilon
+        epsilon_prob = overall_match * (1.0 - (row_dist + col_dist) / 2.0)
+        epsilon_prob = max(0.0, min(1.0, epsilon_prob))  # Clamp to [0, 1]
+        
+        return {
+            'row_degree_correlation': row_corr,
+            'col_degree_correlation': col_corr,
+            'overall_structure_match': overall_match,
+            'epsilon_isomorphic_prob': epsilon_prob,
+            'row_degree_distance': row_dist,
+            'col_degree_distance': col_dist
+        }
+    
+    def _degree_correlation(self, deg1: List[int], deg2: List[int]) -> float:
+        """
+        Compute Pearson correlation between two degree sequences.
+        Returns 0.0 if either sequence has zero variance.
+        """
+        if len(deg1) != len(deg2) or len(deg1) == 0:
+            return 0.0
+        
+        n = len(deg1)
+        mean1 = sum(deg1) / n
+        mean2 = sum(deg2) / n
+        
+        numerator = sum((d1 - mean1) * (d2 - mean2) for d1, d2 in zip(deg1, deg2))
+        
+        var1 = sum((d1 - mean1) ** 2 for d1 in deg1)
+        var2 = sum((d2 - mean2) ** 2 for d2 in deg2)
+        
+        if var1 == 0 or var2 == 0:
+            return 0.0
+        
+        denominator = (var1 * var2) ** 0.5
+        return numerator / denominator if denominator > 0 else 0.0
+    
+    def _degree_distance(self, deg1: List[int], deg2: List[int]) -> float:
+        """
+        Compute normalized L1 distance between degree sequences.
+        Returns value in [0, 1].
+        """
+        if len(deg1) != len(deg2) or len(deg1) == 0:
+            return 1.0
+        
+        total_distance = sum(abs(d1 - d2) for d1, d2 in zip(deg1, deg2))
+        max_possible = sum(max(d1, d2) for d1, d2 in zip(deg1, deg2))
+        
+        if max_possible == 0:
+            return 0.0
+        
+        return total_distance / max_possible
+    
+    def semantic_grounding_level(self, other: 'HLLSetLattice') -> str:
+        """
+        Classify semantic grounding level between two lattices.
+        
+        Uses structural similarity (ε-isomorphism probability based on
+        graph structure) to categorize:
+        - Strong: P ≥ 0.7 (well-grounded, similar structure)
+        - Moderate: 0.5 ≤ P < 0.7 (partial grounding)
+        - Weak: 0.3 ≤ P < 0.5 (abstract, weak structural similarity)
+        - Disconnected: P < 0.3 (no grounding, different structures)
+        
+        Returns:
+            str: Grounding level classification
+        """
+        metrics = self.compare_lattices(other)
+        prob = metrics['epsilon_isomorphic_prob']
+        
+        if prob >= 0.7:
+            return "Strong (well-grounded)"
+        elif prob >= 0.5:
+            return "Moderate (partial grounding)"
+        elif prob >= 0.3:
+            return "Weak (abstract)"
+        else:
+            return "Disconnected (no grounding)"
+    
     def get_row_basic(self, index: int) -> Optional[BasicHLLSet]:
+
         """Get row basic HLLSet at index."""
         if 0 <= index < len(self.row_basic):
             return self.row_basic[index]
