@@ -1,7 +1,7 @@
 """
 Test C Backend Implementation
 
-This script tests the new C/Cython backend and compares it with Julia (if available).
+This script tests the C/Cython backend for HLLSet.
 """
 
 import time
@@ -16,12 +16,11 @@ print("\n1. Checking available backends...")
 print("-" * 70)
 
 try:
-    from core.hllset_new import HLLSet, C_BACKEND_AVAILABLE, JULIA_AVAILABLE
-    print(f"✓ Imported hllset_new successfully")
+    from core.hllset import HLLSet, C_BACKEND_AVAILABLE
+    print(f"✓ Imported hllset successfully")
     print(f"  C Backend Available: {C_BACKEND_AVAILABLE}")
-    print(f"  Julia Backend Available: {JULIA_AVAILABLE}")
 except ImportError as e:
-    print(f"✗ Failed to import hllset_new: {e}")
+    print(f"✗ Failed to import hllset: {e}")
     sys.exit(1)
 
 if not C_BACKEND_AVAILABLE:
@@ -122,40 +121,6 @@ if card_before == card_after_base and card_new > card_before:
 else:
     print("✗ Immutability violated!")
 
-# Compare with Julia if available
-if JULIA_AVAILABLE:
-    print("\n7. Comparing C vs Julia backends...")
-    print("-" * 70)
-    
-    try:
-        from core.hllset import HLLSet as JuliaHLL
-        
-        test_tokens = [f'token_{i}' for i in range(1000)]
-        
-        # C backend
-        start = time.time()
-        hll_c = HLLSet.from_batch(test_tokens)
-        c_time = time.time() - start
-        c_card = hll_c.cardinality()
-        
-        # Julia backend  
-        start = time.time()
-        hll_j = JuliaHLL.from_batch(test_tokens)
-        j_time = time.time() - start
-        j_card = hll_j.cardinality()
-        
-        print(f"C Backend:     {c_time:.4f}s - cardinality: {c_card:.0f}")
-        print(f"Julia Backend: {j_time:.4f}s - cardinality: {j_card:.0f}")
-        print(f"Difference: {abs(c_card - j_card):.1f} ({abs(c_card - j_card)/max(c_card, j_card)*100:.1f}%)")
-        
-        if abs(c_card - j_card) / max(c_card, j_card) < 0.05:
-            print("✓ Results match within 5%")
-        else:
-            print("⚠ Results differ significantly")
-            
-    except Exception as e:
-        print(f"⚠ Could not compare with Julia: {e}")
-
 # Summary
 print("\n" + "=" * 70)
 print("SUMMARY")
@@ -165,13 +130,7 @@ print(f"""
 ✓ All basic operations pass
 ✓ Parallel processing enabled
 ✓ Performance is good
-
-Next steps:
-1. Run your existing tests with the new backend
-2. Compare outputs with Julia version
-3. When satisfied, switch to C backend as default:
-   mv core/hllset.py core/hllset_julia_backup.py
-   mv core/hllset_new.py core/hllset.py
+✓ Julia has been removed from the project
 
 Backend: {hll.backend}
 """)

@@ -174,6 +174,56 @@ cdef class HLLCore:
             with nogil:
                 self._add_token_c(data, length, seed)
     
+    def compute_reg_zeros_batch(self, list tokens, uint64_t seed=0):
+        """
+        Compute (reg, zeros) pairs for a batch of tokens WITHOUT adding to registers.
+        Returns list of (reg, zeros) tuples for each token.
+        
+        This is used to avoid double calculation when building adjacency matrices:
+        - HLLSet computes these values internally when adding tokens
+        - AM needs these values to build transition matrix
+        - This method exposes the calculation without duplicate work
+        
+        Args:
+            tokens: List of token strings
+            seed: Hash seed (must match seed used for add_batch)
+        
+        Returns:
+            List of (reg, zeros) tuples, one per token
+        """
+        cdef int i, n = len(tokens)
+        cdef bytes token_bytes
+        cdef const char* data
+        cdef int length
+        cdef uint64_t hash_val
+        cdef uint32_t bucket
+        cdef uint64_t remaining
+        cdef int lz
+        
+        result = []
+        
+        for i in range(n):
+            token_bytes = tokens[i].encode('utf-8')
+            data = token_bytes
+            length = len(token_bytes)
+            
+            # Compute hash
+            hash_val = murmur_hash64(data, length, seed)
+            
+            # Extract bucket (reg)
+            bucket = hash_val & ((1 << self.p_bits) - 1)
+            
+            # Extract remaining bits
+            remaining = hash_val >> self.p_bits
+            
+            # Count leading zeros + 1
+            lz = leading_zeros(remaining) - self.p_bits + 1
+            
+            # Zeros is lz - 1 (since we add 1 in the calculation)
+            result.append((int(bucket), int(lz - 1)))
+        
+        return result
+    
     def cardinality(self):
         """
         Estimate cardinality using HLL algorithm.

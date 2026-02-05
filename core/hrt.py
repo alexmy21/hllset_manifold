@@ -41,11 +41,29 @@ class HRTConfig:
     """
     Configuration for Hash Relational Tensor.
     
+    From paper Section 2.1: HLLSet = (H, φ, τ, ρ)
+    - H: Array of registers
+    - φ: Tokenization functor
+    - τ: Inclusion tolerance threshold (morphism exists if BSS_τ ≥ τ)
+    - ρ: Exclusion intolerance threshold (morphism exists if BSS_ρ ≤ ρ)
+    
     Dimension = 2^P * h_bits + 2
     +2 for START and END special tokens
+    
+    Constraint: 0 ≤ ρ < τ ≤ 1
     """
     p_bits: int = 10           # HLL precision (m = 2^p registers)
     h_bits: int = 32           # Hash bit size for element hashes
+    tau: float = 0.7           # Inclusion tolerance threshold (τ)
+    rho: float = 0.3           # Exclusion intolerance threshold (ρ)
+    epsilon: float = 0.1       # ε-isomorphism tolerance for entanglement
+    
+    def __post_init__(self):
+        """Validate thresholds."""
+        if not (0 <= self.rho < self.tau <= 1):
+            raise ValueError(f"Thresholds must satisfy 0 ≤ ρ < τ ≤ 1, got ρ={self.rho}, τ={self.tau}")
+        if not (0 < self.epsilon < 1):
+            raise ValueError(f"Epsilon must satisfy 0 < ε < 1, got ε={self.epsilon}")
     
     @property
     def dimension(self) -> int:
@@ -156,9 +174,14 @@ class BasicHLLSet:
     """
     A basic HLLSet in the lattice.
     
+    From paper Section 3.1: Objects in category HLL with morphisms defined by BSS.
+    
     Building blocks of the system:
     - Row basic: r[0] to r[dimension-1] (future projections)
     - Column basic: c[0] to c[dimension-1] (past reconstructions)
+    
+    Morphisms (paper Section 2.2):
+    - f: A → B exists iff BSS_τ(A→B) ≥ τ_A and BSS_ρ(A→B) ≤ ρ_B
     """
     index: int
     is_row: bool
@@ -180,6 +203,44 @@ class BasicHLLSet:
     def is_end(self) -> bool:
         """Check if this is the END special token (index dimension-1, row)."""
         return self.is_row and self.index == self.config.dimension - 1
+    
+    def bss_tau(self, other: BasicHLLSet) -> float:
+        """
+        Bell State Similarity (inclusion).
+        
+        From paper Eq. 2.2:
+        BSS_τ(A → B) = |A ∩ B| / |B|
+        
+        Measures how much of B is covered by A.
+        """
+        if other.hllset.cardinality() == 0:
+            return 0.0
+        intersection = self.hllset.intersection_cardinality(other.hllset)
+        return intersection / other.hllset.cardinality()
+    
+    def bss_rho(self, other: BasicHLLSet) -> float:
+        """
+        Bell State Similarity (exclusion).
+        
+        From paper Eq. 2.2:
+        BSS_ρ(A → B) = |A \\ B| / |B|
+        
+        Measures how much of A is outside B (relative to |B|).
+        """
+        if other.hllset.cardinality() == 0:
+            return 0.0
+        difference = self.hllset.cardinality() - self.hllset.intersection_cardinality(other.hllset)
+        return difference / other.hllset.cardinality()
+    
+    def has_morphism_to(self, other: BasicHLLSet) -> bool:
+        """
+        Check if morphism f: self → other exists.
+        
+        From paper Section 2.2:
+        Morphism exists iff BSS_τ(A→B) ≥ τ and BSS_ρ(A→B) ≤ ρ
+        """
+        return (self.bss_tau(other) >= self.config.tau and 
+                self.bss_rho(other) <= self.config.rho)
     
     def __repr__(self) -> str:
         special = ""
@@ -328,6 +389,64 @@ class HLLSetLattice:
         hashes = [b.hllset.name for b in self.row_basic + self.col_basic]
         return compute_structural_hash(*hashes)
     
+    def is_epsilon_isomorphic(self, other: HLLSetLattice, epsilon: Optional[float] = None) -> bool:
+        """
+        Check if two lattices are ε-isomorphic.
+        
+        From paper Definition 4.1:
+        Two lattices are ε-isomorphic if there exists a bijection φ such that:
+        |BSS(A, B) - BSS(φ(A), φ(B))| ≤ ε for all A, B
+        
+        Simplified implementation: check pairwise BSS preservation.
+        """
+        if self.config != other.config:
+            return False
+        
+        eps = epsilon if epsilon is not None else self.config.epsilon
+        
+        # Check row basic HLLSets
+        for i in range(len(self.row_basic)):
+            for j in range(len(self.row_basic)):
+                bss_self = self.row_basic[i].bss_tau(self.row_basic[j])
+                bss_other = other.row_basic[i].bss_tau(other.row_basic[j])
+                if abs(bss_self - bss_other) > eps:
+                    return False
+        
+        # Check column basic HLLSets
+        for i in range(len(self.col_basic)):
+            for j in range(len(self.col_basic)):
+                bss_self = self.col_basic[i].bss_tau(self.col_basic[j])
+                bss_other = other.col_basic[i].bss_tau(other.col_basic[j])
+                if abs(bss_self - bss_other) > eps:
+                    return False
+        
+        return True
+    
+    def entanglement_probability(self, num_datasets: int, dataset_size: int) -> float:
+        """
+        Compute probability of entanglement failure.
+        
+        From paper Theorem 4.2:
+        P(not ε-isomorphic) ≤ min(1, n² · (d²/2^m + exp(-ε²d/2)))
+        
+        where:
+        - n = num_datasets
+        - d = dataset_size
+        - m = 2^p_bits (number of registers)
+        - ε = epsilon
+        """
+        import math
+        n = num_datasets
+        d = dataset_size
+        m = 1 << self.config.p_bits
+        eps = self.config.epsilon
+        
+        collision_term = (d * d) / (2 ** m)
+        deviation_term = math.exp(-(eps * eps * d) / 2)
+        
+        prob = min(1.0, n * n * (collision_term + deviation_term))
+        return prob
+    
     def __repr__(self) -> str:
         return f"Lattice({len(self.row_basic)} rows, {len(self.col_basic)} cols, {self.name[:8]}...)"
 
@@ -373,7 +492,153 @@ class Cover:
 
 
 # =============================================================================
-# SECTION 6: Hash Relational Tensor (HRT) - Immutable
+# SECTION 6: Noether Current and Conservation
+# =============================================================================
+
+@dataclass(frozen=True)
+class NoetherCurrent:
+    """
+    Conservation tracking for HRT evolution.
+    
+    From paper Section 6.2:
+    Noether current J_uv(p) = p[u]·(Ap)[v] - p[v]·(A^T·p)[u]
+    
+    Total flux Φ = Σ J_uv is conserved: dΦ/dt = 0
+    """
+    flux: float
+    timestamp: float
+    step_number: int
+    
+    @classmethod
+    def compute(cls, am: AdjacencyMatrix, distribution: ImmutableTensor, step_number: int) -> NoetherCurrent:
+        """
+        Compute Noether current for given AM and probability distribution.
+        
+        Args:
+            am: Adjacency matrix
+            distribution: Probability distribution over states
+            step_number: Current evolution step
+        """
+        import torch
+        
+        # Forward: Ap
+        forward = torch.matmul(am.tensor.data, distribution.data)
+        
+        # Retro: A^T p
+        retro = torch.matmul(am.tensor.data.T, distribution.data)
+        
+        # Compute flux: Σ_uv p[u]·(Ap)[v] - p[v]·(A^T·p)[u]
+        # Simplified: sum of differences
+        flux = float(torch.sum(distribution.data * forward - distribution.data * retro))
+        
+        return cls(
+            flux=flux,
+            timestamp=time.time(),
+            step_number=step_number
+        )
+    
+    def __repr__(self) -> str:
+        return f"NoetherCurrent(Φ={self.flux:.6f}, step={self.step_number})"
+
+
+@dataclass(frozen=True)
+class EvolutionTriple:
+    """
+    Explicit tracking of evolution dynamics.
+    
+    From paper Section 5.1:
+    H(t+1) = [H(t) \\ D] ∪ N
+    
+    where:
+    - D: Deleted information (forget)
+    - R: Retained information (H(t) \\ D)
+    - N: New information (add)
+    """
+    deleted: Set[str]       # Hashes of deleted HLLSets
+    retained: Set[str]      # Hashes of retained HLLSets
+    new: Set[str]           # Hashes of new HLLSets
+    
+    @property
+    def cardinality_change(self) -> int:
+        """
+        Net change in cardinality: |N| - |D|
+        
+        From paper: When |N| = |D|, evolution is conservative (Noether current = 0)
+        """
+        return len(self.new) - len(self.deleted)
+    
+    @property
+    def is_conservative(self) -> bool:
+        """Check if evolution conserves cardinality."""
+        return self.cardinality_change == 0
+    
+    def __repr__(self) -> str:
+        return f"EvolutionTriple(D={len(self.deleted)}, R={len(self.retained)}, N={len(self.new)}, ΔQ={self.cardinality_change})"
+
+
+# =============================================================================
+# SECTION 7: Contextual Selection
+# =============================================================================
+
+@dataclass(frozen=True)
+class ContextualSelection:
+    """
+    Contextual Selection Operator.
+    
+    From paper Section 7.1:
+    S_C: U → {0,1}
+    S_C(x) = 1 iff BSS(F_C, F_x) ≥ τ_C and exclusion(F_C, F_x) ≤ ρ_C
+    
+    **Key insight**: τ/ρ thresholds are the MECHANICS of contextual selection.
+    They define the concrete mechanism by which a context determines what fits "in it".
+    
+    The fundamental inversion: Context C actively selects compatible elements,
+    not vice versa. The context precedes and determines content.
+    
+    Process:
+    1. Context C has thresholds τ (inclusion) and ρ (exclusion)
+    2. For each candidate x, compute BSS_τ(C, x) and BSS_ρ(C, x)
+    3. If BSS_τ ≥ τ AND BSS_ρ ≤ ρ, then C selects x
+    4. Selected elements are "in" the context (active selection, not passive membership)
+    """
+    context_hash: str
+    selected_hashes: FrozenSet[str]
+    tau_threshold: float
+    rho_threshold: float
+    selection_power: float  # Conservation tracking
+    
+    @classmethod
+    def from_context(cls, context: BasicHLLSet, candidates: List[BasicHLLSet]) -> ContextualSelection:
+        """
+        Apply contextual selection.
+        
+        Context selects candidates that satisfy BSS thresholds.
+        """
+        selected = []
+        total_power = 0.0
+        
+        for candidate in candidates:
+            bss_tau = context.bss_tau(candidate)
+            bss_rho = context.bss_rho(candidate)
+            
+            if bss_tau >= context.config.tau and bss_rho <= context.config.rho:
+                selected.append(candidate.hllset.name)
+                total_power += bss_tau
+        
+        return cls(
+            context_hash=context.hllset.name,
+            selected_hashes=frozenset(selected),
+            tau_threshold=context.config.tau,
+            rho_threshold=context.config.rho,
+            selection_power=total_power
+        )
+    
+    def __repr__(self) -> str:
+        return f"Selection(ctx={self.context_hash[:8]}..., selected={len(self.selected_hashes)}, power={self.selection_power:.2f})"
+
+
+# =============================================================================
+# SECTION 8: Hash Relational Tensor (HRT) - Immutable
 # =============================================================================
 
 @dataclass(frozen=True)
@@ -381,10 +646,19 @@ class HRT:
     """
     Hash Relational Tensor - Immutable evolution unit.
     
+    From paper: HRT combines AM (adjacency) and W (HLLSet lattice).
+    
+    Category Theory (Section 3):
+    - Objects: HRTs with HLLSet lattices
+    - Morphisms: Evolution steps preserving structural isomorphism
+    - Composition: Sequential evolution with conservation laws
+    
     Components:
     - am: Adjacency Matrix (relationship structure)
-    - lattice: HLLSetLattice (basic HLLSets)
+    - lattice: HLLSetLattice (basic HLLSets) - the W lattice
     - covers: Optional cover cache (doesn't affect identity)
+    - noether_current: Conservation tracking (Section 6.2)
+    - evolution_triple: (D, R, N) tracking (Section 5.1)
     
     Evolution:
     - parent_hrt: Hash of previous HRT (history pointer)
@@ -399,6 +673,8 @@ class HRT:
     parent_hrt: Optional[str] = None
     step_number: int = 0
     covers: Tuple[Cover, ...] = field(default_factory=tuple, compare=False)
+    noether_current: Optional[NoetherCurrent] = field(default=None, compare=False)
+    evolution_triple: Optional[EvolutionTriple] = field(default=None, compare=False)
     timestamp: float = field(default_factory=time.time, compare=False)
     
     @classmethod
@@ -472,10 +748,28 @@ class HRT:
         """
         Merge two HRTs to create new HRT.
         
+        From paper Section 5.1:
+        H(t+1) = [H(t) \\ D] ∪ N
+        
         Used in evolution: in_process.merge(current) → new_current
+        Tracks (D, R, N) triple for conservation analysis.
         """
         if self.config != other.config:
             raise ValueError("Cannot merge HRTs with different configs")
+        
+        # Track evolution triple (D, R, N)
+        self_hashes = set(b.hllset.name for b in self.lattice.row_basic + self.lattice.col_basic)
+        other_hashes = set(b.hllset.name for b in other.lattice.row_basic + other.lattice.col_basic)
+        
+        deleted = other_hashes - self_hashes
+        retained = self_hashes & other_hashes
+        new = self_hashes - other_hashes
+        
+        evo_triple = EvolutionTriple(
+            deleted=deleted,
+            retained=retained,
+            new=new
+        )
         
         # Merge adjacency matrices
         merged_am = self.am.merge(other.am)
@@ -486,13 +780,22 @@ class HRT:
         # Combine covers
         merged_covers = tuple(set(self.covers) | set(other.covers))
         
+        # Compute Noether current with uniform distribution
+        import torch
+        uniform_data = torch.ones(self.config.dimension, dtype=torch.float32) / self.config.dimension
+        uniform_dist = ImmutableTensor.from_tensor(uniform_data)
+        new_step = max(self.step_number, other.step_number) + 1
+        noether = NoetherCurrent.compute(merged_am, uniform_dist, new_step)
+        
         return HRT(
             config=self.config,
             am=merged_am,
             lattice=merged_lattice,
             parent_hrt=self.name,  # This HRT becomes the parent
-            step_number=max(self.step_number, other.step_number) + 1,
-            covers=merged_covers
+            step_number=new_step,
+            covers=merged_covers,
+            noether_current=noether,
+            evolution_triple=evo_triple
         )
     
     def with_cover(self, cover: Cover) -> HRT:
@@ -508,12 +811,194 @@ class HRT:
         )
     
     def project_future(self, col_indices: List[int]) -> ImmutableTensor:
-        """Project columns to rows (future)."""
+        """
+        Project columns to rows (future).
+        
+        From paper Section 6.1:
+        p_forward = normalize(A · p)
+        """
         return self.am.project_rows(col_indices)
     
     def project_past(self, row_indices: List[int]) -> ImmutableTensor:
-        """Project rows to columns (past)."""
+        """
+        Project rows to columns (past/retro).
+        
+        From paper Section 6.1:
+        p_retro = normalize(A^T · p)
+        
+        Enables time-reversible dynamics.
+        """
         return self.am.project_cols(row_indices)
+    
+    def contextual_select(self, context_index: int, is_row: bool = True) -> ContextualSelection:
+        """
+        Apply contextual selection from a basic HLLSet.
+        
+        From paper Section 7: Contextual Selection Principle
+        
+        **The fundamental inversion**: Context actively selects compatible elements.
+        
+        **τ/ρ as mechanics**: The thresholds define HOW context determines what fits "in it":
+        - τ (tau): Minimum similarity required (inclusion threshold)
+        - ρ (rho): Maximum dissimilarity tolerated (exclusion threshold)
+        - Selection: BSS_τ(context, x) ≥ τ AND BSS_ρ(context, x) ≤ ρ
+        
+        This is not passive membership - the context precedes and determines content!
+        
+        Args:
+            context_index: Index of the context basic HLLSet
+            is_row: Whether context is from row or column basics
+        
+        Returns:
+            ContextualSelection with selected candidates
+        """
+        if is_row:
+            context = self.lattice.row_basic[context_index]
+            candidates = list(self.lattice.col_basic)
+        else:
+            context = self.lattice.col_basic[context_index]
+            candidates = list(self.lattice.row_basic)
+        
+        return ContextualSelection.from_context(context, candidates)
+    
+    def check_entanglement(self, other: HRT, epsilon: Optional[float] = None) -> Tuple[bool, float]:
+        """
+        Check if this HRT is ε-isomorphic (entangled) with another.
+        
+        From paper Section 4: Entanglement via structural isomorphism.
+        
+        Returns:
+            (is_entangled, failure_probability)
+        """
+        is_iso = self.lattice.is_epsilon_isomorphic(other.lattice, epsilon)
+        
+        # Estimate from typical dataset sizes
+        num_datasets = 2
+        dataset_size = 1000  # Conservative estimate
+        prob_failure = self.lattice.entanglement_probability(num_datasets, dataset_size)
+        
+        return is_iso, prob_failure
+    
+    def select_next_by_priority(self, current_index: int, is_row: bool = True, 
+                                strategy: str = 'greedy') -> Optional[Tuple[int, float]]:
+        """
+        Select next basic HLLSet using priority weighting via BSS(τ, ρ).
+        
+        **Key insights from theory**:
+        1. AM shows raw co-occurrence (tokens appeared together)
+        2. W shows semantic connections (BSS thresholds satisfied)
+        3. τ/ρ act as comprehensive priority weights for path selection
+        4. **τ/ρ are the mechanics of contextual selection** - they define how
+           a context actively selects what fits "in it"
+        
+        Process:
+        - Current HLLSet (context) uses its τ/ρ thresholds
+        - Evaluates each candidate via BSS_τ and BSS_ρ
+        - Selects only those satisfying: BSS_τ ≥ τ AND BSS_ρ ≤ ρ
+        - Ranks valid candidates by priority = BSS_τ - BSS_ρ
+        - Context determines what is "in it" (not passive membership!)
+        
+        Args:
+            current_index: Index of current basic HLLSet (the context)
+            is_row: Whether current is from row or column basics
+            strategy: Selection strategy ('greedy', 'stochastic')
+        
+        Returns:
+            (selected_index, priority_score) or None if no valid candidates
+        """
+        if is_row:
+            current = self.lattice.row_basic[current_index]
+            candidates = list(enumerate(self.lattice.col_basic))
+        else:
+            current = self.lattice.col_basic[current_index]
+            candidates = list(enumerate(self.lattice.row_basic))
+        
+        # Compute priorities for all candidates
+        priorities = []
+        for idx, candidate in candidates:
+            if candidate.hllset.cardinality() == 0:
+                continue  # Skip empty sets
+            
+            bss_tau = current.bss_tau(candidate)
+            bss_rho = current.bss_rho(candidate)
+            
+            # Check thresholds
+            if bss_tau >= self.config.tau and bss_rho <= self.config.rho:
+                # Priority = inclusion - exclusion (higher is better)
+                priority = bss_tau - bss_rho
+                priorities.append((idx, priority, bss_tau, bss_rho))
+        
+        if not priorities:
+            return None
+        
+        if strategy == 'greedy':
+            # Select highest priority
+            selected = max(priorities, key=lambda x: x[1])
+            return (selected[0], selected[1])
+        
+        elif strategy == 'stochastic':
+            # Sample proportional to priority (softmax)
+            import math
+            scores = [p[1] for p in priorities]
+            max_score = max(scores)
+            exp_scores = [math.exp(s - max_score) for s in scores]  # Numerical stability
+            total = sum(exp_scores)
+            probs = [e / total for e in exp_scores]
+            
+            # Sample
+            import random
+            r = random.random()
+            cumulative = 0.0
+            for i, prob in enumerate(probs):
+                cumulative += prob
+                if r <= cumulative:
+                    return (priorities[i][0], priorities[i][1])
+            
+            # Fallback to last
+            return (priorities[-1][0], priorities[-1][1])
+        
+        else:
+            raise ValueError(f"Unknown strategy: {strategy}")
+    
+    def find_path_by_priority(self, start_index: int, end_index: int, 
+                             max_steps: int = 100) -> Optional[List[Tuple[int, float]]]:
+        """
+        Find path from start to end using priority-weighted selection.
+        
+        Demonstrates how τ/ρ thresholds filter AM connectivity:
+        - AM may show edges between all nodes (raw co-occurrence)
+        - W only allows edges satisfying BSS(τ, ρ) thresholds
+        - This creates semantic filtering for meaningful paths
+        
+        Returns:
+            List of (index, priority) tuples representing the path, or None
+        """
+        path = [(start_index, 1.0)]  # Start with initial node
+        current_idx = start_index
+        visited = {start_index}
+        is_row = True  # Alternate between row and column
+        
+        for step in range(max_steps):
+            if current_idx == end_index:
+                return path  # Found path to end
+            
+            # Select next node by priority
+            result = self.select_next_by_priority(current_idx, is_row=is_row, strategy='greedy')
+            
+            if result is None:
+                return None  # No valid next node (filtered by τ/ρ)
+            
+            next_idx, priority = result
+            
+            if next_idx in visited:
+                return None  # Cycle detected
+            
+            path.append((next_idx, priority))
+            visited.add(next_idx)
+            current_idx = next_idx
+            is_row = not is_row  # Alternate
+        
+        return None  # Max steps exceeded
     
     def find_cover(self, target_hash: str) -> Optional[Cover]:
         """Find cached cover for target HLLSet hash."""
@@ -568,8 +1053,35 @@ class HRT:
         ]
         return compute_structural_hash(*components)
     
+    def conservation_health(self) -> Optional[str]:
+        """
+        Check conservation health using Noether current.
+        
+        From paper Section 6.2:
+        System is healthy when flux Φ ≈ 0 (conserved)
+        Drift indicates hash collisions or numerical errors.
+        """
+        if self.noether_current is None:
+            return None
+        
+        flux = abs(self.noether_current.flux)
+        if flux < 1e-6:
+            return "HEALTHY: Flux ≈ 0 (perfect conservation)"
+        elif flux < 1e-3:
+            return f"GOOD: Small flux {flux:.6f}"
+        elif flux < 0.1:
+            return f"WARNING: Moderate flux {flux:.6f}"
+        else:
+            return f"ALERT: Large flux {flux:.6f} - check for collisions"
+    
     def __repr__(self) -> str:
-        return f"HRT({self.name[:16]}..., step={self.step_number}, dim={self.config.dimension})"
+        extras = []
+        if self.noether_current:
+            extras.append(f"Φ={self.noether_current.flux:.3f}")
+        if self.evolution_triple:
+            extras.append(f"ΔQ={self.evolution_triple.cardinality_change}")
+        extra_str = ", " + ", ".join(extras) if extras else ""
+        return f"HRT({self.name[:16]}..., step={self.step_number}, dim={self.config.dimension}{extra_str})"
     
     def __hash__(self) -> int:
         return hash(self.name)
@@ -581,7 +1093,7 @@ class HRT:
 
 
 # =============================================================================
-# SECTION 7: HRT Evolution Manager
+# SECTION 9: HRT Evolution Manager
 # =============================================================================
 
 @dataclass(frozen=True)
@@ -693,7 +1205,7 @@ class HRTEvolution:
 
 
 # =============================================================================
-# SECTION 8: Example Usage
+# SECTION 10: Example Usage
 # =============================================================================
 
 def main():
@@ -776,13 +1288,101 @@ def main():
     print(f"Current unchanged? {evolution.get_current().am.name == current.am.name}")
     
     # Projections
-    print("\n7. Future/Past Projections")
+    print("\n7. Future/Past Projections (Time-Reversible)")
     print("-" * 40)
     
     future = evolution.triple.current.project_future([2, 3, 4])
     past = evolution.triple.current.project_past([0, 1])
     print(f"Future projection shape: {future.shape}")
     print(f"Past projection shape: {past.shape}")
+    
+    # Conservation analysis
+    print("\n8. Conservation Analysis (Noether Current)")
+    print("-" * 40)
+    
+    current_hrt = evolution.get_current()
+    if current_hrt.noether_current:
+        print(f"Noether current: {current_hrt.noether_current}")
+        print(f"Health: {current_hrt.conservation_health()}")
+    
+    if current_hrt.evolution_triple:
+        print(f"Evolution triple: {current_hrt.evolution_triple}")
+        print(f"Conservative? {current_hrt.evolution_triple.is_conservative}")
+    
+    # Contextual selection
+    print("\n9. Contextual Selection Principle")
+    print("-" * 40)
+    
+    print("The Fundamental Inversion:")
+    print("  Context ACTIVELY SELECTS compatible elements")
+    print("  τ/ρ are the MECHANICS of this selection")
+    print()
+    
+    selection = current_hrt.contextual_select(context_index=2, is_row=True)
+    print(f"Selection: {selection}")
+    print(f"Context selects {len(selection.selected_hashes)} compatible elements")
+    print()
+    print(f"How it works:")
+    print(f"  1. Context (r_2) uses τ={config.tau}, ρ={config.rho}")
+    print(f"  2. For each candidate x: compute BSS_τ(C,x) and BSS_ρ(C,x)")
+    print(f"  3. Select if BSS_τ ≥ {config.tau} AND BSS_ρ ≤ {config.rho}")
+    print(f"  4. Context determines what is 'in it' (not passive membership!)")
+    
+    # BSS morphisms
+    print("\n10. Bell State Similarity (BSS) Morphisms")
+    print("-" * 40)
+    
+    basic_a = current_hrt.lattice.row_basic[2]
+    basic_b = current_hrt.lattice.row_basic[3]
+    
+    bss_tau = basic_a.bss_tau(basic_b)
+    bss_rho = basic_a.bss_rho(basic_b)
+    has_morphism = basic_a.has_morphism_to(basic_b)
+    
+    print(f"BSS_τ({basic_a.name} → {basic_b.name}) = {bss_tau:.3f}")
+    print(f"BSS_ρ({basic_a.name} → {basic_b.name}) = {bss_rho:.3f}")
+    print(f"Morphism exists? {has_morphism} (τ={config.tau}, ρ={config.rho})")
+    
+    # Priority-weighted path selection
+    print("\n11. Priority-Weighted Path Selection (AM ≠ W)")
+    print("-" * 40)
+    
+    print("Completing the Picture:")
+    print("  • Contextual Selection Principle: Context actively selects")
+    print("  • τ/ρ Mechanics: BSS thresholds implement the selection")
+    print("  • Result: AM ≠ W (raw co-occurrence ≠ semantic connection)")
+    print()
+    print(f"AM shows: Raw co-occurrence (tokens appeared together)")
+    print(f"W shows:  Semantic connections (BSS(τ, ρ) satisfied)")
+    print(f"τ/ρ = Mechanics making context select what fits 'in it'")
+    
+    # Try to select next from current position
+    start_idx = 5
+    next_result = current_hrt.select_next_by_priority(start_idx, is_row=True, strategy='greedy')
+    
+    if next_result:
+        next_idx, priority = next_result
+        print(f"\nFrom row basic r_{start_idx}:")
+        print(f"  Selected: column basic c_{next_idx}")
+        print(f"  Priority score: {priority:.3f}")
+        print(f"  (BSS_τ - BSS_ρ, filtered by τ={config.tau}, ρ={config.rho})")
+    else:
+        print(f"\nFrom row basic r_{start_idx}:")
+        print(f"  No valid candidates (all filtered by τ/ρ thresholds)")
+        print(f"  This shows W disconnects nodes that AM might connect!")
+    
+    # Try to find a path
+    path_result = current_hrt.find_path_by_priority(start_index=2, end_index=10, max_steps=20)
+    
+    if path_result:
+        print(f"\nPath from index 2 to 10:")
+        print(f"  Steps: {len(path_result)}")
+        print(f"  Path (index, priority): {[(idx, f'{p:.2f}') for idx, p in path_result[:5]]}")
+        if len(path_result) > 5:
+            print(f"  ... ({len(path_result) - 5} more steps)")
+    else:
+        print(f"\nNo path found from 2 to 10")
+        print(f"  τ/ρ thresholds may have disconnected the path in W!")
     
     print("\n" + "="*70)
     print("HRT Evolution Ready")

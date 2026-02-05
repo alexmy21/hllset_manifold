@@ -45,6 +45,7 @@ hll = HLLSet.from_batches(batches, parallel=True)  # Actually parallel!
 ## Need Help?
 
 See [MIGRATION.md](MIGRATION.md) for:
+
 - Detailed explanation of the Cython code
 - Performance benchmarks
 - Troubleshooting guide

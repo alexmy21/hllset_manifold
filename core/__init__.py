@@ -2,13 +2,13 @@
 HLLSet Manifold Core Module
 
 This module provides the core components of the HLLSet Manifold system:
-- hllset: HLLSet class with direct Julia integration
+- hllset: HLLSet class with C/Cython backend
 - immutable_tensor: Generic immutable tensor foundation with PyTorch backend
 - kernel: Stateless transformation engine (pure morphisms)
 - hrt: Hash Relational Tensor with three-state evolution model
 
 Architecture:
-1. HLLSet: Named, immutable probabilistic set (direct Julia interface)
+1. HLLSet: Named, immutable probabilistic set (C/Cython backend)
 2. Kernel: Pure operations (absorb, union, intersection, difference)
 3. HRT: Operation data structure (AM, Lattice, Covers) - immutable
 4. OS: Reality interface (evolution orchestration, persistent storage)

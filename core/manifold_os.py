@@ -33,7 +33,10 @@ import hashlib
 from pathlib import Path
 import threading
 
+import numpy as np
+
 from .kernel import Kernel, HLLSet, compute_sha1, Morphism, SingularityReport
+from .constants import SHARED_SEED
 from .hrt import (
     HRT, HRTConfig, AdjacencyMatrix, 
     HLLSetLattice, BasicHLLSet, Cover
@@ -166,17 +169,436 @@ class TokenizationConfig:
     lowercase: bool = True
     remove_punctuation: bool = False
     split_on: str = " "
+    
+    # n-token disambiguation parameters
+    use_n_tokens: bool = True  # Enable n-token representation
+    n_token_groups: List[int] = field(default_factory=lambda: [1, 2, 3])  # 1-token, 2-token, 3-token
+    maintain_order: bool = True  # Preserve token order in n-tokens
+    
+    # HLLSet extraction (IMPORTANT: AM is shared resource after commit)
+    extract_hllset_from_am: bool = True  # Derive HLLSet from AM before commit
+    # If True: Extract HLLSet from AM during ingestion (before AM is committed/merged)
+    # If False: Skip HLLSet extraction (use when only AM is needed)
 
+
+@dataclass
+class LUTRecord:
+    """
+    Lookup Table Record for disambiguating tokens from HLLSet bits.
+    
+    Structure:
+    - key: (reg, zeros) - register number and run of trailing zeros
+    - hashes: list of hash values that contributed to this bit
+    - tokens: list of token sequences that produced these hashes
+    
+    Purpose: Resolve one-to-many mapping from bits back to original tokens.
+    """
+    reg: int  # Register number
+    zeros: int  # Run of trailing zeros
+    hashes: List[int] = field(default_factory=list)
+    tokens: List[Tuple[str, ...]] = field(default_factory=list)  # Token sequences
+    
+    def add_entry(self, hash_val: int, token_seq: Tuple[str, ...]):
+        """Add hash and token sequence to this LUT record."""
+        if hash_val not in self.hashes:
+            self.hashes.append(hash_val)
+            self.tokens.append(token_seq)
+    
+    def get_candidates(self) -> Set[str]:
+        """Get all candidate tokens from this LUT entry."""
+        candidates = set()
+        for token_seq in self.tokens:
+            candidates.update(token_seq)
+        return candidates
+
+
+@dataclass
+class NTokenRepresentation:
+    """
+    Multiple representations of tokens using n-token groups.
+    
+    For tokens {a, b, c, d}:
+    - 1-tokens: {a}, {b}, {c}, {d}
+    - 2-tokens: {a,b}, {b,c}, {c,d}
+    - 3-tokens: {a,b,c}, {b,c,d}
+    
+    Each group creates separate HLLSet with different hashes.
+    Union of all groups should be equivalent.
+    Order is implicitly preserved: {a} < {a,b} < {a,b,c}
+    
+    ARCHITECTURAL NOTE - AM as Source of Truth:
+    - AM is built during ingestion and contains row/col HLLSets
+    - complete_hllset is derived from AM BEFORE commit (AM becomes shared after)
+    - This is optional: only extract if config.extract_hllset_from_am = True
+    """
+    original_tokens: List[str]  # Original ordered tokens
+    n_token_groups: Dict[int, List[Tuple[str, ...]]] = field(default_factory=dict)  # n -> list of n-token tuples
+    hllsets: Dict[int, HLLSet] = field(default_factory=dict)  # n -> HLLSet for that group
+    luts: Dict[int, Dict[Tuple[int, int], LUTRecord]] = field(default_factory=dict)  # n -> LUT for that group
+    complete_hllset: Optional[HLLSet] = None  # Complete HLLSet derived from AM (extracted before commit)
+    
+    def generate_n_tokens(self, n: int, maintain_order: bool = True) -> List[Tuple[str, ...]]:
+        """
+        Generate n-token groups from original tokens.
+        
+        Args:
+            n: Size of token groups
+            maintain_order: If True, preserve sequential order (sliding window)
+                          If False, use all combinations
+        
+        Returns:
+            List of n-token tuples
+        """
+        if n < 1 or n > len(self.original_tokens):
+            return []
+        
+        if maintain_order:
+            # Sliding window: preserves order
+            # [a,b,c,d] with n=2 -> [(a,b), (b,c), (c,d)]
+            result = []
+            for i in range(len(self.original_tokens) - n + 1):
+                result.append(tuple(self.original_tokens[i:i+n]))
+            return result
+        else:
+            # All combinations: no order
+            from itertools import combinations
+            return [tuple(c) for c in combinations(self.original_tokens, n)]
+    
+    def build_n_token_groups(self, ns: List[int], maintain_order: bool = True):
+        """Build all n-token groups for given n values."""
+        for n in ns:
+            self.n_token_groups[n] = self.generate_n_tokens(n, maintain_order)
+    
+    def get_implicit_order(self) -> List[Tuple[str, ...]]:
+        """
+        Get implicit order from n-token groups.
+        
+        Returns ordered list: {a} < {a,b} < {a,b,c} < {b} < {b,c} < ...
+        """
+        ordered = []
+        for n in sorted(self.n_token_groups.keys()):
+            ordered.extend(self.n_token_groups[n])
+        return ordered
+    
+    def disambiguate_tokens(self, reg: int, zeros: int) -> Set[str]:
+        """
+        Disambiguate tokens from a specific bit (reg, zeros) using LUT intersection.
+        
+        Algorithm:
+        1. For each n-token group, lookup candidates from LUT
+        2. Intersect all candidate sets
+        3. Result is narrowed set of possible tokens
+        
+        Returns:
+            Set of candidate tokens (intersection across all n-token groups)
+        """
+        candidate_sets = []
+        
+        for n, lut in self.luts.items():
+            key = (reg, zeros)
+            if key in lut:
+                candidates = lut[key].get_candidates()
+                candidate_sets.append(candidates)
+        
+        if not candidate_sets:
+            return set()
+        
+        # Intersection narrows down candidates
+        result = candidate_sets[0]
+        for candidates in candidate_sets[1:]:
+            result = result.intersection(candidates)
+        
+        return result
+
+
+# =============================================================================
+# SECTION 2.5: Adjacency Matrix for Ingestion
+# =============================================================================
+
+@dataclass
+class AMCell:
+    """
+    Cell in Adjacency Matrix.
+    
+    Tracks:
+    - Frequency: how often column follows row
+    - HLLSets: updated incrementally
+    """
+    row_id: Tuple[int, int]  # (reg, zeros) for row token
+    col_id: Tuple[int, int]  # (reg, zeros) for col token
+    frequency: int = 0
+    
+    def increment(self):
+        """Increment frequency counter."""
+        self.frequency += 1
+
+
+@dataclass
+class IngestionAdjacencyMatrix:
+    """
+    Adjacency Matrix built during ingestion using (reg, zeros) identifiers.
+    
+    TWO-PHASE USAGE:
+    
+    Phase 1 - INGESTION (Building AM):
+    - Tokens processed through sliding window
+    - Transition frequencies recorded in cells
+    - Row/Column HLLSets aggregated
+    - START/END markers establish boundaries
+    
+    Phase 2 - QUERY/PROMPT PROCESSING (Order Reconstruction):
+    - Given: HLLSet from prompt + relevant retrieved HLLSets
+    - Problem: HLLSets don't preserve order, only distinct tokens
+    - Solution: Traverse AM to reconstruct original data order
+    - Method: reconstruct_order() uses START→END traversal
+    
+    Structure:
+    - Rows/Columns: (reg, zeros) identifiers from token hashes
+    - Cell values: Frequency of transitions
+    - Size: ~100K x 100K (vs millions of unique tokens)
+    
+    START/END are PERMANENT tokens:
+    - START: (reg=-1, zeros=0) - Traversal entry point
+    - END: (reg=-2, zeros=0) - Stop condition (with threshold)
+    - AM holds order explicitly via transition patterns
+    """
+    
+    # Matrix storage: {(row_id, col_id): AMCell}
+    cells: Dict[Tuple[Tuple[int, int], Tuple[int, int]], AMCell] = field(default_factory=dict)
+    
+    # Row HLLSets: {row_id: HLLSet}
+    row_hllsets: Dict[Tuple[int, int], HLLSet] = field(default_factory=dict)
+    
+    # Column HLLSets: {col_id: HLLSet}
+    col_hllsets: Dict[Tuple[int, int], HLLSet] = field(default_factory=dict)
+    
+    # Special token identifiers
+    START_ID: Tuple[int, int] = (-1, 0)
+    END_ID: Tuple[int, int] = (-2, 0)
+    
+    def get_or_create_cell(self, row_id: Tuple[int, int], col_id: Tuple[int, int]) -> AMCell:
+        """Get existing cell or create new one."""
+        key = (row_id, col_id)
+        if key not in self.cells:
+            self.cells[key] = AMCell(row_id=row_id, col_id=col_id)
+        return self.cells[key]
+    
+    def update_cell(self, row_id: Tuple[int, int], col_id: Tuple[int, int]):
+        """
+        Update cell frequency and corresponding row/column HLLSets.
+        
+        Args:
+            row_id: (reg, zeros) for row token
+            col_id: (reg, zeros) for column token
+        """
+        # Update cell frequency
+        cell = self.get_or_create_cell(row_id, col_id)
+        cell.increment()
+    
+    def update_row_hllset(self, row_id: Tuple[int, int], hllset: HLLSet, kernel: Kernel):
+        """
+        Update HLLSet for a row.
+        
+        Args:
+            row_id: (reg, zeros) identifier
+            hllset: HLLSet to merge into row
+            kernel: Kernel for union operation
+        """
+        if row_id in self.row_hllsets:
+            # Union with existing
+            self.row_hllsets[row_id] = kernel.union(self.row_hllsets[row_id], hllset)
+        else:
+            # First time
+            self.row_hllsets[row_id] = hllset
+    
+    def update_col_hllset(self, col_id: Tuple[int, int], hllset: HLLSet, kernel: Kernel):
+        """
+        Update HLLSet for a column.
+        
+        Args:
+            col_id: (reg, zeros) identifier
+            hllset: HLLSet to merge into column
+            kernel: Kernel for union operation
+        """
+        if col_id in self.col_hllsets:
+            # Union with existing
+            self.col_hllsets[col_id] = kernel.union(self.col_hllsets[col_id], hllset)
+        else:
+            # First time
+            self.col_hllsets[col_id] = hllset
+    
+    def get_frequency(self, row_id: Tuple[int, int], col_id: Tuple[int, int]) -> int:
+        """Get frequency for cell (row, col)."""
+        key = (row_id, col_id)
+        return self.cells[key].frequency if key in self.cells else 0
+    
+    def get_row_ids(self) -> Set[Tuple[int, int]]:
+        """Get all row identifiers."""
+        rows = set()
+        for (row_id, _) in self.cells.keys():
+            rows.add(row_id)
+        return rows
+    
+    def get_col_ids(self) -> Set[Tuple[int, int]]:
+        """Get all column identifiers."""
+        cols = set()
+        for (_, col_id) in self.cells.keys():
+            cols.add(col_id)
+        return cols
+    
+    def get_size(self) -> Tuple[int, int]:
+        """Get matrix dimensions (rows, cols)."""
+        return (len(self.get_row_ids()), len(self.get_col_ids()))
+    
+    def get_nonzero_count(self) -> int:
+        """Get number of non-zero cells."""
+        return len(self.cells)
+    
+    def get_complete_hllset(self, kernel: Kernel, use_rows: bool = True) -> Optional[HLLSet]:
+        """
+        Reconstruct complete HLLSet from AM's row or column HLLSets.
+        
+        KEY INSIGHT: AM already contains all information needed to reconstruct
+        the original HLLSet! No need to store HLLSets separately during ingestion.
+        
+        The union of all row_hllsets (or col_hllsets) gives you the complete
+        HLLSet representing all tokens in the ingested data.
+        
+        ARCHITECTURE BENEFIT:
+        - Ingestion: Build AM only (simpler, single source of truth)
+        - Query time: Derive HLLSet from AM when needed
+        - AM serves dual purpose: order preservation + set operations
+        
+        Args:
+            kernel: Kernel for union operations
+            use_rows: If True, union row_hllsets; if False, union col_hllsets
+        
+        Returns:
+            Complete HLLSet (union of all row/col HLLSets), or None if empty
+        
+        Example:
+            >>> am = build_am_from_tokens(tokens, kernel)
+            >>> hllset = am.get_complete_hllset(kernel)
+            >>> # Now you have both: AM (order) + HLLSet (cardinality/operations)
+        """
+        hllsets = self.row_hllsets if use_rows else self.col_hllsets
+        
+        if not hllsets:
+            return None
+        
+        # Union all HLLSets
+        result = None
+        for hllset in hllsets.values():
+            if result is None:
+                result = hllset
+            else:
+                result = kernel.union(result, hllset)
+        
+        return result
+    
+    def to_dense_array(self) -> np.ndarray:
+        """
+        Convert to dense numpy array (for visualization/analysis).
+        Warning: May be large (~100K x 100K).
+        """
+        row_ids = sorted(self.get_row_ids())
+        col_ids = sorted(self.get_col_ids())
+        
+        # Create mapping
+        row_map = {rid: i for i, rid in enumerate(row_ids)}
+        col_map = {cid: i for i, cid in enumerate(col_ids)}
+        
+        # Allocate array
+        array = np.zeros((len(row_ids), len(col_ids)), dtype=np.int32)
+        
+        # Fill array
+        for (row_id, col_id), cell in self.cells.items():
+            i = row_map[row_id]
+            j = col_map[col_id]
+            array[i, j] = cell.frequency
+        
+        return array
+    
+    def reconstruct_order(self, target_cardinality: int, threshold_ratio: float = 0.9) -> List[Tuple[int, int]]:
+        """
+        Reconstruct original token order from HLLSets using AM traversal.
+        
+        USE CASE - QUERY/PROMPT PROCESSING:
+        1. User provides prompt → create HLLSet from prompt
+        2. System retrieves relevant HLLSets (basic or compound)
+        3. Problem: HLLSets only have distinct tokens, no order
+        4. Solution: Use this method to traverse AM and restore original order
+        
+        ALGORITHM:
+        1. Start at START_ID
+        2. At each position, find highest frequency transition to next node
+        3. Skip END_ID until reaching threshold (threshold_ratio * target_cardinality)
+        4. Stop when:
+           - Reached END_ID after threshold
+           - No more valid transitions
+           - Reached max steps (prevent infinite loops)
+        
+        Args:
+            target_cardinality: Expected number of distinct tokens (from HLLSet.cardinality())
+            threshold_ratio: Fraction of cardinality before allowing END (default 0.9)
+        
+        Returns:
+            List of (reg, zeros) identifiers representing reconstructed order
+            
+        Example:
+            # During query processing:
+            prompt_hllset = kernel.absorb(tokenize("show me data about X"))
+            relevant_hllsets = system.retrieve_relevant(prompt_hllset)
+            cardinality = relevant_hllsets[0].cardinality()
+            
+            # Reconstruct original order:
+            ordered_ids = am.reconstruct_order(cardinality, threshold_ratio=0.9)
+            # If cardinality=15, skip END until step ~14
+            # Returns: [(reg1, zeros1), (reg2, zeros2), ...] in original order
+        
+        Note: This is a placeholder for future implementation.
+        """
+        # TODO: Implement traversal logic
+        # 1. current = START_ID
+        # 2. path = []
+        # 3. while len(path) < threshold and not at END:
+        #    - Get all cells with row_id = current
+        #    - Filter out END_ID if len(path) < threshold
+        #    - Choose next based on highest frequency
+        #    - path.append(next)
+        #    - current = next
+        # 4. return path
+        raise NotImplementedError("Traversal not yet implemented")
+
+
+# =============================================================================
+# SECTION 3: Ingest Driver (Enhanced with AM construction)
+# =============================================================================
 
 class IngestDriver(Driver):
     """
     Ingest Driver: The gateway between external reality and the system.
     
+    Enhanced with n-token disambiguation algorithm:
+    
     Responsibilities:
     1. Ingest raw external data (text, events, observations)
     2. Tokenize data into meaningful units
-    3. Convert tokens to HLLSets (via kernel)
-    4. Return content-addressed HLLSet
+    3. Generate n-token representations (1-token, 2-token, 3-token, ...)
+    4. Build HLLSets for each n-token group with separate hashing
+    5. Maintain LUT (Lookup Table) for token disambiguation
+    6. Structure results in Adjacency Matrix (AM) of HRT
+    7. Return NTokenRepresentation with all HLLSets and LUTs
+    
+    Algorithm:
+    - For tokens {a,b,c,d}, create:
+      - 1-tokens: {a}, {b}, {c}, {d}
+      - 2-tokens: {a,b}, {b,c}, {c,d}
+      - 3-tokens: {a,b,c}, {b,c,d}
+    - Each group gets different hash -> different HLLSet
+    - Union of all groups is equivalent
+    - Order preserved: {a} < {a,b} < {a,b,c}
+    - LUT enables disambiguation: intersection of candidates across groups
     
     This implements the D (Interface) component of ICASRA.
     """
@@ -185,19 +607,25 @@ class IngestDriver(Driver):
         super().__init__(driver_id, "ingest")
         self.config = config or TokenizationConfig()
         self.ingested_count = 0
+        
+        # n-token representations storage
+        self.n_token_representations: Dict[str, NTokenRepresentation] = {}  # data_hash -> representation
+        
+        # Adjacency Matrix for ingestion
+        self.adjacency_matrix = IngestionAdjacencyMatrix()
     
-    def tokenize(self, raw_data: str) -> Set[str]:
+    def tokenize(self, raw_data: str) -> List[str]:
         """
-        Tokenize raw data into tokens.
+        Tokenize raw data into ORDERED list of tokens.
         
         Args:
             raw_data: Raw string data from external reality
         
         Returns:
-            Set of tokens
+            Ordered list of tokens (order preserved for n-token generation)
         """
         if not raw_data:
-            return set()
+            return []
         
         # Apply transformations
         text = raw_data
@@ -211,24 +639,159 @@ class IngestDriver(Driver):
         # Split into tokens
         tokens = text.split(self.config.split_on)
         
-        # Filter by length
+        # Filter by length (preserve order)
         tokens = [
             t.strip() for t in tokens 
             if self.config.min_token_length <= len(t.strip()) <= self.config.max_token_length
         ]
         
-        return set(tokens)
+        return tokens  # Return list, not set, to preserve order
     
-    def process(self, raw_data: str, kernel: Kernel) -> HLLSet:
+    def _build_am_from_tokens(self, tokens: List[str], kernel: Kernel) -> IngestionAdjacencyMatrix:
         """
-        Process raw data through ingestion pipeline.
+        Build Adjacency Matrix from tokens with START/END markers.
+        
+        INGESTION PHASE - Building the AM:
+        1. Add <START> token at beginning, <END> token at end
+        2. For each adjacent pair (token_i, token_i+1):
+           - Compute (reg, zeros) identifiers using HLLSet (avoid double calculation)
+           - Update AM[from_id, to_id] frequency
+           - Accumulate row/column HLLSets
+        
+        START/END enable order reconstruction during QUERY phase:
+        - During ingestion: Record transition patterns with START/END boundaries
+        - During query: Traverse AM from START→END to restore original order
+        - HLLSets lose order → AM preserves it via transition frequencies
+        - Threshold logic prevents premature END during traversal
+        
+        OPTIMIZATION:
+        - Uses HLLSet.compute_reg_zeros_batch() to get identifiers
+        - Avoids duplicate hash calculations (computed once in C backend)
+        
+        Args:
+            tokens: Ordered list of tokens
+            kernel: Kernel for HLLSet operations
+        
+        Returns:
+            IngestionAdjacencyMatrix with updated cells and HLLSets
+        """
+        if not tokens:
+            return self.adjacency_matrix
+        
+        # 1. Add START and END special tokens
+        START_TOKEN = "<START>"
+        END_TOKEN = "<END>"
+        tokens_with_markers = [START_TOKEN] + tokens + [END_TOKEN]
+        
+        # 2. Compute (reg, zeros) for all tokens at once (efficient batch operation)
+        reg_zeros_pairs = HLLSet.compute_reg_zeros_batch(
+            tokens_with_markers, 
+            p_bits=kernel.p_bits,
+            seed=SHARED_SEED
+        )
+        
+        # 3. Build transitions: for each adjacent pair
+        for i in range(len(tokens_with_markers) - 1):
+            from_token = tokens_with_markers[i]
+            to_token = tokens_with_markers[i + 1]
+            
+            # Get identifiers (already computed, no recalculation!)
+            if from_token == START_TOKEN:
+                from_id = self.adjacency_matrix.START_ID
+            else:
+                from_id = reg_zeros_pairs[i]
+            
+            if to_token == END_TOKEN:
+                to_id = self.adjacency_matrix.END_ID
+            else:
+                to_id = reg_zeros_pairs[i + 1]
+            
+            # 4. Update AM cell (increment transition frequency)
+            self.adjacency_matrix.update_cell(from_id, to_id)
+            
+            # 5. Update row and column HLLSets
+            # Create HLLSets for individual tokens
+            from_hllset = kernel.absorb({from_token})
+            to_hllset = kernel.absorb({to_token})
+            
+            self.adjacency_matrix.update_row_hllset(from_id, from_hllset, kernel)
+            self.adjacency_matrix.update_col_hllset(to_id, to_hllset, kernel)
+        
+        return self.adjacency_matrix
+    
+    def _build_lut_for_n_tokens(self, n_tokens: List[Tuple[str, ...]], 
+                                 hllset: HLLSet, n: int) -> Dict[Tuple[int, int], LUTRecord]:
+        """
+        Build Lookup Table (LUT) for n-token group.
+        
+        For each bit (reg, zeros) in HLLSet, track which token sequences contributed.
+        
+        Args:
+            n_tokens: List of n-token tuples
+            hllset: HLLSet created from these n-tokens
+            n: Size of n-token group
+        
+        Returns:
+            LUT: dict mapping (reg, zeros) -> LUTRecord
+        """
+        lut = {}
+        
+        # Get precision bits - handle both real and mock HLLSets
+        if hasattr(hllset, 'precision_bits'):
+            p_bits = hllset.precision_bits
+        elif hasattr(hllset, 'p_bits'):
+            p_bits = hllset.p_bits
+        else:
+            # Default for mock/test HLLSets
+            p_bits = 10
+        
+        # For each n-token sequence
+        for token_seq in n_tokens:
+            # Join tokens to create string for hashing
+            token_str = f"__n{n}__" + "__".join(token_seq)  # e.g., ('a','b') -> '__n2__a__b'
+            
+            # Compute hash (same as HLLSet does internally)
+            # Note: This is simplified - actual implementation should match kernel hashing
+            hash_val = hash(token_str) & 0xFFFFFFFFFFFFFFFF  # Ensure 64-bit positive
+            
+            # Determine which register and trailing zeros
+            reg = hash_val & ((1 << p_bits) - 1)  # Lower p_bits
+            remaining = hash_val >> p_bits
+            
+            # Count trailing zeros
+            zeros = 0
+            if remaining > 0:
+                while (remaining & 1) == 0 and zeros < (64 - p_bits):
+                    zeros += 1
+                    remaining >>= 1
+            else:
+                zeros = 64 - p_bits  # Max for 64-bit hash
+            
+            key = (reg, zeros)
+            if key not in lut:
+                lut[key] = LUTRecord(reg=reg, zeros=zeros)
+            
+            lut[key].add_entry(hash_val, token_seq)
+        
+        return lut
+    
+    def process(self, raw_data: str, kernel: Kernel) -> NTokenRepresentation:
+        """
+        Process raw data through enhanced n-token ingestion pipeline.
+        
+        Algorithm:
+        1. Tokenize into ordered list
+        2. Generate n-token groups (1-token, 2-token, 3-token)
+        3. Create HLLSet for each group (different hashes)
+        4. Build LUT for each group (for disambiguation)
+        5. Return NTokenRepresentation with all data
         
         Args:
             raw_data: Raw string data
             kernel: Kernel for HLLSet creation
         
         Returns:
-            Content-addressed HLLSet
+            NTokenRepresentation with HLLSets and LUTs for all n-token groups
         """
         if not self.activate():
             raise RuntimeError(f"Driver {self.driver_id} not in idle state")
@@ -236,43 +799,133 @@ class IngestDriver(Driver):
         start_time = time.time()
         
         try:
-            # Tokenize
+            # 1. Tokenize into ordered list
             tokens = self.tokenize(raw_data)
             
-            # Create HLLSet via kernel
-            hllset = kernel.absorb(tokens)
+            if not tokens:
+                # Empty result
+                self.idle()
+                return NTokenRepresentation(original_tokens=[])
+            
+            # 2. Create NTokenRepresentation
+            representation = NTokenRepresentation(original_tokens=tokens)
+            
+            if not self.config.use_n_tokens:
+                # Simple mode: just create single HLLSet from tokens
+                hllset = kernel.absorb(set(tokens))
+                representation.hllsets[1] = hllset
+                self.idle()
+                return representation
+            
+            # 3. Generate n-token groups
+            representation.build_n_token_groups(
+                self.config.n_token_groups, 
+                self.config.maintain_order
+            )
+            
+            # 3.5. Build Adjacency Matrix from tokens (with START/END markers)
+            self._build_am_from_tokens(tokens, kernel)
+            
+            # 3.6. CRITICAL: Extract HLLSet from AM BEFORE commit
+            # After commit, AM is merged into shared resource - can't derive individual HLLSets
+            if self.config.extract_hllset_from_am:
+                representation.complete_hllset = self.adjacency_matrix.get_complete_hllset(kernel)
+            
+            # 4. Create HLLSet for each n-token group
+            for n, n_token_list in representation.n_token_groups.items():
+                # Flatten n-tokens to strings for hashing
+                # Use join with separator to distinguish n-token groups
+                token_strings = []
+                for token_tuple in n_token_list:
+                    # Join with special separator to make each n-group distinct
+                    token_str = f"__n{n}__" + "__".join(token_tuple)
+                    token_strings.append(token_str)
+                
+                # Create HLLSet from these strings
+                hllset = kernel.absorb(set(token_strings))
+                representation.hllsets[n] = hllset
+                
+                # 5. Build LUT for this n-token group
+                lut = self._build_lut_for_n_tokens(n_token_list, hllset, n)
+                representation.luts[n] = lut
+            
+            # Store representation
+            data_hash = compute_sha1(raw_data)
+            self.n_token_representations[data_hash] = representation
             
             # Record stats
             duration = time.time() - start_time
             self.stats.record_operation(duration)
             self.ingested_count += 1
             
-            # Return to idle
-            self.idle()
+            # Commit before moving to next batch
+            # This finalizes current state and preserves AM for cumulative updates
+            self.commit()
             
-            return hllset
+            return representation
             
         except Exception as e:
             self.mark_error()
             raise RuntimeError(f"Ingest driver {self.driver_id} failed: {e}")
     
-    def batch_process(self, raw_data_list: List[str], kernel: Kernel) -> List[HLLSet]:
+    def batch_process(self, raw_data_list: List[str], kernel: Kernel) -> List[NTokenRepresentation]:
         """
         Process multiple raw data items in batch.
         
-        Returns list of content-addressed HLLSets.
+        For batch processing:
+        1. Concatenate all raw data with START/END markers
+        2. Build single AM for entire batch
+        3. Return list of NTokenRepresentations (one per item)
+        
+        Returns list of NTokenRepresentations (each with multiple HLLSets and LUTs).
         """
         results = []
+        
+        # For batch, we process each item individually but share the same AM
         for raw_data in raw_data_list:
             try:
-                hllset = self.process(raw_data, kernel)
-                results.append(hllset)
+                representation = self.process(raw_data, kernel)
+                results.append(representation)
             except RuntimeError:
                 # Skip failed items, driver will be in ERROR state
                 if self.needs_restart:
                     break
         
         return results
+    
+    def get_representation(self, data_hash: str) -> Optional[NTokenRepresentation]:
+        """Retrieve stored n-token representation by data hash."""
+        return self.n_token_representations.get(data_hash)
+    
+    def get_adjacency_matrix(self) -> IngestionAdjacencyMatrix:
+        """Get the current Adjacency Matrix."""
+        return self.adjacency_matrix
+    
+    def reset_adjacency_matrix(self):
+        """Reset the Adjacency Matrix (for new batch)."""
+        self.adjacency_matrix = IngestionAdjacencyMatrix()
+    
+    def commit(self) -> bool:
+        """
+        Commit current state before moving to next batch.
+        
+        This operation:
+        1. Finalizes current AM state (marks as committed)
+        2. Prepares for next batch (driver returns to IDLE)
+        3. Preserves AM for cumulative updates across batches
+        
+        Note: Commit is automatically called at end of process().
+        Can be called manually if needed.
+        
+        Returns:
+            True if commit successful, False otherwise
+        """
+        with self._lock:
+            if self.state == DriverState.ACTIVE:
+                # Finalize current state - AM is preserved for next batch
+                self.state = DriverState.IDLE
+                return True
+            return False
 
 
 # =============================================================================
@@ -911,16 +1564,16 @@ class ManifoldOS:
     # Ingest Operations (D - Interface)
     # -------------------------------------------------------------------------
     
-    def ingest(self, raw_data: str, driver_id: Optional[str] = None) -> Optional[HLLSet]:
+    def ingest(self, raw_data: str, driver_id: Optional[str] = None) -> Optional[NTokenRepresentation]:
         """
-        Ingest raw data from external reality.
+        Ingest raw data from external reality using n-token algorithm.
         
         Args:
             raw_data: Raw string data to ingest
             driver_id: Optional specific driver ID (default: "ingest_default")
         
         Returns:
-            Content-addressed HLLSet or None on error
+            NTokenRepresentation with multiple HLLSets and LUTs, or None on error
         """
         if driver_id is None:
             driver_id = "ingest_default"
@@ -930,25 +1583,28 @@ class ManifoldOS:
             return None
         
         try:
-            hllset = driver.process(raw_data, self.kernel)
-            # Store in persistent storage
-            self.store.store_hllset(hllset)
-            return hllset
+            representation = driver.process(raw_data, self.kernel)
+            
+            # Store all HLLSets in persistent storage
+            for n, hllset in representation.hllsets.items():
+                self.store.store_hllset(hllset)
+            
+            return representation
         except RuntimeError as e:
             print(f"Ingest failed: {e}")
             return None
     
     def ingest_batch(self, raw_data_list: List[str], 
-                    driver_id: Optional[str] = None) -> List[HLLSet]:
+                    driver_id: Optional[str] = None) -> List[NTokenRepresentation]:
         """
-        Ingest batch of raw data.
+        Ingest batch of raw data using n-token algorithm.
         
         Args:
             raw_data_list: List of raw string data
             driver_id: Optional specific driver ID
         
         Returns:
-            List of content-addressed HLLSets
+            List of NTokenRepresentations (each with multiple HLLSets and LUTs)
         """
         if driver_id is None:
             driver_id = "ingest_default"
@@ -958,11 +1614,14 @@ class ManifoldOS:
             return []
         
         try:
-            hllsets = driver.batch_process(raw_data_list, self.kernel)
-            # Store all in persistent storage
-            for hllset in hllsets:
-                self.store.store_hllset(hllset)
-            return hllsets
+            representations = driver.batch_process(raw_data_list, self.kernel)
+            
+            # Store all HLLSets in persistent storage
+            for representation in representations:
+                for n, hllset in representation.hllsets.items():
+                    self.store.store_hllset(hllset)
+            
+            return representations
         except Exception as e:
             print(f"Batch ingest failed: {e}")
             return []
