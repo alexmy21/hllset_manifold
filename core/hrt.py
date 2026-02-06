@@ -1346,6 +1346,215 @@ class HRTEvolution:
     def get_in_process(self) -> Optional[HRT]:
         """Get in_process HRT if exists."""
         return self.triple.in_process
+    
+    def project_next_state(self, tau_proj: float, rho_proj: float, kernel) -> Tuple[Optional[HRT], float, Dict]:
+        """
+        Project possible next state based on BSS structure of current HRT.
+        
+        This is NON-DETERMINISTIC: different (tau_proj, rho_proj) produce different projections.
+        
+        Args:
+            tau_proj: Projection inclusion threshold [0, 1]
+            rho_proj: Projection exclusion threshold [0, 1]
+            kernel: Kernel for HLLSet operations
+        
+        Returns:
+            Tuple of:
+            - projected_hrt: Predicted next HRT state (or None if no strong connections)
+            - confidence: Projection confidence [0, 1]
+            - metrics: Dict with projection statistics
+        """
+        current = self.triple.current
+        
+        # Can't project from empty HRT
+        if not current.lattices:
+            return None, 0.0, {"reason": "empty_hrt", "connections": 0}
+        
+        # Analyze BSS connections in each lattice
+        all_connections = []
+        all_strengths = []
+        
+        for name, lattice in current.lattices.items():
+            if not lattice.row_basic or not lattice.col_basic:
+                continue
+            
+            # Check all row-column basic pairs
+            for r in lattice.row_basic:
+                for c in lattice.col_basic:
+                    bss_tau = r.bss_tau(c, kernel)
+                    bss_rho = r.bss_rho(c, kernel)
+                    
+                    # Connection passes thresholds → likely to persist/strengthen
+                    if bss_tau >= tau_proj and bss_rho <= rho_proj:
+                        strength = bss_tau * (1 - bss_rho)  # Combined strength
+                        all_connections.append((name, r, c, bss_tau, bss_rho, strength))
+                        all_strengths.append(strength)
+        
+        # No strong connections → uncertain projection
+        if not all_connections:
+            return None, 0.0, {
+                "reason": "no_strong_connections",
+                "connections": 0,
+                "tau_proj": tau_proj,
+                "rho_proj": rho_proj
+            }
+        
+        # Compute confidence from BSS distribution
+        import numpy as np
+        mean_strength = np.mean(all_strengths)
+        std_strength = np.std(all_strengths) if len(all_strengths) > 1 else 0.0
+        
+        # High mean, low variance → high confidence
+        # Low mean, high variance → low confidence
+        confidence = mean_strength * (1 - min(std_strength, 1.0))
+        
+        # Build projection: Keep strong connections, predict their evolution
+        # This is a simplified projection - in practice would build new HRT
+        # For now, return metrics showing what would be retained
+        
+        projected_connections_by_lattice = {}
+        for name, r, c, bss_tau, bss_rho, strength in all_connections:
+            if name not in projected_connections_by_lattice:
+                projected_connections_by_lattice[name] = []
+            projected_connections_by_lattice[name].append({
+                'row_tokens': len(r.data),
+                'col_tokens': len(c.data),
+                'bss_tau': bss_tau,
+                'bss_rho': bss_rho,
+                'strength': strength
+            })
+        
+        metrics = {
+            "connections": len(all_connections),
+            "confidence": confidence,
+            "mean_strength": mean_strength,
+            "std_strength": std_strength,
+            "tau_proj": tau_proj,
+            "rho_proj": rho_proj,
+            "lattices": projected_connections_by_lattice
+        }
+        
+        # For full implementation, would construct projected HRT here
+        # For now, return None but with full metrics
+        return None, confidence, metrics
+    
+    def compute_noether_current(self, kernel) -> Optional[NoetherCurrent]:
+        """
+        Compute Noether current for last evolution step.
+        
+        Requires:
+        - in_process exists (ephemeral state)
+        - current exists (committed state)
+        - history exists (previous state)
+        
+        Returns:
+            NoetherCurrent with flux Φ = (|N| - |D|) / (|R| + |N|)
+        """
+        if self.triple.in_process is None:
+            return None  # No evolution step to measure
+        
+        current = self.triple.current
+        ephemeral = self.triple.in_process
+        
+        # Compute what would be deleted, retained, new
+        deleted_tokens = set()
+        retained_tokens = set()
+        new_tokens = set()
+        
+        # Analyze all lattices
+        for name in set(current.lattices.keys()) | set(ephemeral.lattices.keys()):
+            current_lattice = current.lattices.get(name)
+            ephemeral_lattice = ephemeral.lattices.get(name)
+            
+            # Get all tokens from both
+            current_tokens = set()
+            ephemeral_tokens = set()
+            
+            if current_lattice:
+                for r in current_lattice.row_basic:
+                    current_tokens.update(r.data)
+                for c in current_lattice.col_basic:
+                    current_tokens.update(c.data)
+            
+            if ephemeral_lattice:
+                for r in ephemeral_lattice.row_basic:
+                    ephemeral_tokens.update(r.data)
+                for c in ephemeral_lattice.col_basic:
+                    ephemeral_tokens.update(c.data)
+            
+            # Classify tokens
+            deleted_tokens.update(current_tokens - ephemeral_tokens)
+            retained_tokens.update(current_tokens & ephemeral_tokens)
+            new_tokens.update(ephemeral_tokens - current_tokens)
+        
+        # Build EvolutionTriple
+        evolution_triple = EvolutionTriple(
+            deleted=deleted_tokens,
+            retained=retained_tokens,
+            new=new_tokens
+        )
+        
+        # Compute flux
+        total_after = len(retained_tokens) + len(new_tokens)
+        if total_after == 0:
+            flux = 0.0  # Degenerate case
+        else:
+            flux = (len(new_tokens) - len(deleted_tokens)) / total_after
+        
+        return NoetherCurrent(
+            flux=flux,
+            timestamp=self.triple.step_number,
+            step_number=self.triple.step_number,
+            evolution_triple=evolution_triple
+        )
+    
+    def analyze_sustainability(self, target_flux: float = 0.0, tolerance: float = 0.1) -> Dict:
+        """
+        Analyze system sustainability based on Noether current.
+        
+        Args:
+            target_flux: Target Φ value (default 0.0 = conservation)
+            tolerance: Acceptable deviation from target
+        
+        Returns:
+            Dict with sustainability analysis
+        """
+        current = self.compute_noether_current(None)
+        
+        if current is None:
+            return {
+                "sustainable": None,
+                "reason": "no_evolution_step",
+                "recommendation": "ingest data first"
+            }
+        
+        flux = current.flux
+        deviation = abs(flux - target_flux)
+        sustainable = deviation <= tolerance
+        
+        analysis = {
+            "sustainable": sustainable,
+            "flux": flux,
+            "target": target_flux,
+            "deviation": deviation,
+            "tolerance": tolerance,
+            "evolution": {
+                "deleted": len(current.evolution_triple.deleted),
+                "retained": len(current.evolution_triple.retained),
+                "new": len(current.evolution_triple.new),
+                "cardinality_change": current.evolution_triple.cardinality_change
+            }
+        }
+        
+        # Recommendations
+        if flux > target_flux + tolerance:
+            analysis["recommendation"] = "too_much_growth: increase tau, decrease rho (more selective)"
+        elif flux < target_flux - tolerance:
+            analysis["recommendation"] = "too_much_decay: decrease tau, increase rho (less selective)"
+        else:
+            analysis["recommendation"] = "balanced: maintain current parameters"
+        
+        return analysis
 
 
 # =============================================================================
