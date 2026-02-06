@@ -2,7 +2,7 @@
 
 ## What Was Implemented
 
-Successfully implemented the **n-token ingestion algorithm** with disambiguation through multiple representations and Lookup Tables (LUTs).
+Successfully implemented the **n-token ingestion algorithm** with disambiguation through multiple representations and Lookup Tables (LUTs). (see: core/manifold_os.py)
 
 ## Core Components
 

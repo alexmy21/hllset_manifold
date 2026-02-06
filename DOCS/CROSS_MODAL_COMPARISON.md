@@ -9,13 +9,16 @@ When comparing two lattices representing the same reality through different chan
 ### Example
 
 **Sensory lattice** (visual perception):
+
 - Tokens: `['wavelength_630nm', 'bright', 'saturated_color', 'red_hue']`
 
 **Language lattice** (semantic representation):
+
 - Tokens: `['color_descriptor', 'warm_color', 'chromatic_term', 'hue_word']`
 
 **Result**:
-```
+
+```text
 Sensory_HLLSet ∩ Language_HLLSet = ∅ (empty intersection)
 ```
 
@@ -23,13 +26,14 @@ Sensory_HLLSet ∩ Language_HLLSet = ∅ (empty intersection)
 
 BSS (Bell State Similarity) is defined by set intersection:
 
-```
+```text
 BSS_τ(A → B) = |A ∩ B| / |B|
 BSS_ρ(A → B) = |A \ B| / |B|
 ```
 
 For disjoint sets:
-```
+
+```text
 |A ∩ B| = 0
 |A \ B| = |A|
 
@@ -48,7 +52,7 @@ Instead of comparing node content (HLLSet intersections), we compare **graph str
 
 Two lattices representing the same reality through different modalities should have **similar graph structures** even though their node contents are disjoint.
 
-**Same reality → Similar structural patterns → High ε-isomorphism probability**
+>**Same reality → Similar structural patterns → High ε-isomorphism probability**
 
 ## Algorithm: Degree-Based Structural Matching
 
@@ -61,13 +65,15 @@ degree(node) = |{v : node → v is morphism}|
 ```
 
 where morphism exists if:
-```
+
+```text
 BSS_τ(node → v) ≥ τ  AND  BSS_ρ(node → v) ≤ ρ
 ```
 
 ### Step 2: Extract Degree Sequences
 
 For each lattice:
+
 ```python
 row_degrees = [degree(r_0), degree(r_1), ..., degree(r_n)]
 col_degrees = [degree(c_0), degree(c_1), ..., degree(c_n)]
@@ -76,16 +82,20 @@ col_degrees = [degree(c_0), degree(c_1), ..., degree(c_n)]
 ### Step 3: Compute Structural Similarity
 
 **Pearson Correlation** (measures structural similarity):
+
 ```python
 ρ(deg₁, deg₂) = cov(deg₁, deg₂) / (σ₁ · σ₂)
 ```
+
 - High correlation → Similar connectivity patterns
 - Low/negative correlation → Different structures
 
 **Normalized L1 Distance** (measures degree distribution difference):
+
 ```python
 distance = Σ|deg₁[i] - deg₂[i]| / Σmax(deg₁[i], deg₂[i])
 ```
+
 - Low distance → Similar degree distributions
 - High distance → Different degree distributions
 
@@ -192,12 +202,14 @@ Even though token spaces are disjoint (BSS_τ = 0), structural similarity reveal
 ## When to Use Each Approach
 
 ### Use BSS (Content-Based):
+
 - **Within a single lattice** (same token vocabulary)
 - Measuring morphisms between nodes
 - Computing BSS_τ/BSS_ρ for contextual selection
 - Priority weighting for path finding
 
 ### Use Structural Comparison:
+
 - **Between different lattices** (disjoint token vocabularies)
 - Cross-modal semantic grounding (sensory ↔ language)
 - Multimodal alignment (vision ↔ text ↔ audio)
@@ -218,7 +230,7 @@ Entanglement is measured by **graph isomorphism**, not by node content overlap.
 - **Signifier** (linguistic sign) → W_language lattice
 - **Meaning** = structural correspondence (ε-isomorphism)
 
-The relationship is not arbitrary (as Saussure suggested) but **emergent from structural alignment**.
+The choice of signs (language vocabulary) is indeed arbitrary by Saussure. However, relationship is not arbitrary (as Saussure suggested) but **emergent from structural alignment (entanglement)**.
 
 ## Advanced: Beyond Degree-Based Matching
 
@@ -247,6 +259,7 @@ grounding = sensory_lattice.semantic_grounding_level(language_lattice)
 ```
 
 **References**:
+
 - **DOCS/SENSES_SIGNS_SAUSSURE.md**: Theoretical framework
 - **DOCS/HRT_LATTICE_THEORY.md**: W lattice structure
 - **09_senses_and_signs.ipynb**: Demonstration notebook

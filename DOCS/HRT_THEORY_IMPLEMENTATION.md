@@ -1,6 +1,6 @@
 # HRT Theory Implementation
 
-Comprehensive alignment of the HRT (Hash Relational Tensor) implementation with the theoretical paper **"HLLSet Theory: Contextual Anti-Sets and the Selection Principle"**.
+Comprehensive alignment of the HRT (Hash Relational Tensor) implementation with the theoretical paper **"HLLSet Theory: Contextual Anti-Sets and the Selection Principle"**. (see: pubs/article/hllsettheory-contextual-anti-sets.pdf)
 
 ## Overview
 
@@ -207,11 +207,13 @@ $$S_C(x) = 1 \iff \text{BSS}(F_C, F_x) \geq \tau_C \text{ and exclusion}(F_C, F_
 **Critical Connection**: τ/ρ thresholds are the **mechanics of contextual selection** - they define the concrete mechanism by which a context determines what fits "in it".
 
 This completes the theoretical picture:
+
 - **Principle**: Context C actively selects compatible elements (not passive membership)
 - **Mechanism**: BSS(τ, ρ) thresholds provide the selection criteria
 - **Implementation**: `ContextualSelection` class + `select_next_by_priority()` method
 
 The context uses its τ/ρ thresholds to evaluate candidates:
+
 - If BSS_τ(C, x) ≥ τ: Element x has sufficient similarity to C
 - If BSS_ρ(C, x) ≤ ρ: Element x doesn't have excessive dissimilarity
 - Both satisfied → Context C **selects** x as compatible

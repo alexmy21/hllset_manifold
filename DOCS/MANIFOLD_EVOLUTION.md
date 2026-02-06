@@ -548,26 +548,26 @@ Multiple sources of non-determinism enable exploration of possible futures:
 
 For one row basic with one strategy:
 
-**Step 1: Get Referenced Columns**
+#### **Step 1: Get Referenced Columns**
 
 - Check BSS against all column basics: **O(|C| · k)**
   - |C| = number of column basics
   - k = HLL register count (typically 2^12 = 4096)
   - BSS computation: O(k) per pair
 
-**Step 2: Load Evolution Triples (D, R, N)**
+#### **Step 2: Load Evolution Triples (D, R, N)**
 
 - For each referenced column: **O(|C_ref| · |T|)**
   - |C_ref| = number of referenced columns (usually |C_ref| ≪ |C|)
   - |T| = average tokens per (D, R, N) triple
 
-**Step 3: Apply Strategy & Aggregate**
+#### **Step 3: Apply Strategy & Aggregate**
 
 - Process (D, R, N) for each column: **O(|C_ref| · |T|)**
 - Aggregate into HLLSet: **O(|C_ref| · |T| · k)**
   - Each token insertion: O(k)
 
-**Step 4: Disambiguation** - **NO AM SCAN NEEDED!**
+#### **Step 4: Disambiguation** - **NO AM SCAN NEEDED!**
 
 Two approaches:
 
@@ -588,21 +588,21 @@ Two approaches:
 
 **Key Optimization**: Don't scan full AM (n²), only subset covered by predicted HLLSet!
 
-**Step 5: Update AM with Predicted Tokens**
+#### **Step 5: Update AM with Predicted Tokens**
 
 - Add tokens to AM: **O(|pred| · log n)**
   - |pred| = number of predicted tokens (typically |C_ref| · |T|)
   - Using indexed/sparse AM: log n per insertion
   - Not O(|pred| · n) - don't need full scan
 
-**Step 6: Recompute Basic HLLSets from AM**
+#### **Step 6: Recompute Basic HLLSets from AM**
 
 - **Only recompute affected portions**:
 - Incremental update: **O(|pred| · k)**
   - Only update rows/cols touched by new tokens
   - Not O(n · k · α) - don't recompute everything
 
-**Step 7: Build New W Lattice**
+#### **Step 7: Build New W Lattice**
 
 - **Lazy evaluation**: Don't build immediately
 - On-demand morphism computation: **O(d · k)** per morphism needed

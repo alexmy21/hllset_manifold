@@ -46,10 +46,13 @@ def demo_basic_ingest():
     raw_data = "The quick brown fox jumps over the lazy dog"
     print(f"\nIngesting: '{raw_data}'")
     
-    hllset = os.ingest(raw_data)
-    if hllset:
-        print(f"✓ Created HLLSet: {hllset.name[:16]}...")
-        print(f"  Cardinality: {hllset.cardinality()}")
+    representation = os.ingest(raw_data)
+    if representation:
+        # Get 1-token HLLSet
+        hllset = representation.hllsets.get(1)
+        if hllset:
+            print(f"✓ Created HLLSet: {hllset.name[:16]}...")
+            print(f"  Cardinality: {hllset.cardinality()}")
     
     # Check driver stats after ingestion
     drivers = os.list_drivers()
@@ -79,7 +82,10 @@ def demo_batch_ingest():
     ]
     
     print(f"\nIngesting {len(documents)} documents...")
-    hllsets = os.ingest_batch(documents)
+    representations = os.ingest_batch(documents)
+    
+    # Extract 1-token HLLSets from representations
+    hllsets = [rep.hllsets.get(1) for rep in representations if rep.hllsets.get(1)]
     
     print(f"✓ Created {len(hllsets)} HLLSets:")
     for i, hllset in enumerate(hllsets, 1):
@@ -120,8 +126,12 @@ def demo_custom_tokenization():
     text = "Hello, World! Testing 123."
     print(f"\nText: '{text}'")
     
-    default_hllset = os.ingest(text, driver_id="ingest_default")
-    custom_hllset = os.ingest(text, driver_id="ingest_custom")
+    default_rep = os.ingest(text, driver_id="ingest_default")
+    custom_rep = os.ingest(text, driver_id="ingest_custom")
+    
+    # Extract 1-token HLLSets
+    default_hllset = default_rep.hllsets.get(1)
+    custom_hllset = custom_rep.hllsets.get(1)
     
     print(f"\nDefault tokenization:")
     print(f"  Cardinality: {default_hllset.cardinality()}")
@@ -217,9 +227,14 @@ def demo_immutability_principle():
     text = "immutable data structure"
     print(f"\nIngesting '{text}' 3 times...")
     
-    hllset1 = os.ingest(text)
-    hllset2 = os.ingest(text)
-    hllset3 = os.ingest(text)
+    rep1 = os.ingest(text)
+    rep2 = os.ingest(text)
+    rep3 = os.ingest(text)
+    
+    # Extract 1-token HLLSets
+    hllset1 = rep1.hllsets.get(1)
+    hllset2 = rep2.hllsets.get(1)
+    hllset3 = rep3.hllsets.get(1)
     
     print(f"\nHLLSet hashes:")
     print(f"  1: {hllset1.name[:20]}...")
@@ -258,7 +273,9 @@ def demo_universal_constructor_pattern():
     # D - Interface: Ingest external data
     print("\n[D - Interface] Ingesting external data...")
     raw_data = "universal constructor self replication pattern"
-    hllset = os.ingest(raw_data)
+    representation = os.ingest(raw_data)
+    # Extract 1-token HLLSet
+    hllset = representation.hllsets.get(1)
     print(f"  ✓ Ingested: {hllset.name[:20]}...")
     
     # B - Copier: Reproduce structure

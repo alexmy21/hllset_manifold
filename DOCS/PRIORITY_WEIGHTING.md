@@ -2,17 +2,18 @@
 
 ## The Fundamental Connection
 
-**τ/ρ thresholds are the mechanics of Contextual Selection**
+>**τ/ρ thresholds are the mechanics of Contextual Selection**
 
 From the paper's Contextual Selection Principle (Section 7):
 > "Contexts actively select compatible elements, rather than elements passively belonging to contexts"
 
 **How this works in practice:**
+
 - **Abstract**: Context C selects elements that fit within it
 - **Concrete**: BSS(τ, ρ) thresholds determine what "fits"
 - **Mechanism**: Selection operator S_C uses τ/ρ as criteria
 
-```
+```text
 S_C(x) = 1  ⟺  BSS_τ(C, x) ≥ τ  AND  BSS_ρ(C, x) ≤ ρ
 ```
 
@@ -20,11 +21,11 @@ This is the **fundamental inversion**: Context determines content, not the rever
 
 ## The Key Insight
 
-**AM connectivity ≠ W connectivity**
+>**AM connectivity ≠ W connectivity**
 
 This fundamental difference enables intelligent semantic navigation:
 
-```
+```text
 AM[i,j] > 0   ⟹  Tokens co-occurred in sequence
 W[i,j] exists ⟺  BSS_τ(H_i → H_j) ≥ τ  AND  BSS_ρ(H_i → H_j) ≤ ρ
 ```
@@ -33,7 +34,7 @@ W[i,j] exists ⟺  BSS_τ(H_i → H_j) ≥ τ  AND  BSS_ρ(H_i → H_j) ≤ ρ
 
 ## Priority Function
 
-```python
+```text
 Priority(H_current → H_candidate) = BSS_τ - λ·BSS_ρ
 
 where:
@@ -42,29 +43,33 @@ where:
   λ = weight factor (default 1.0)
 ```
 
-**Higher priority = Better semantic fit**
+**Higher priority = Better semantic fit**.
 
 ## Threshold Effects
 
 ### Conservative Navigation (τ=0.8, ρ=0.2)
+
 - High similarity required
 - Low exclusion tolerance
 - Stays close to context
 - Safe, coherent paths
 
 ### Exploratory Navigation (τ=0.5, ρ=0.5)
+
 - Lower similarity threshold
 - Higher exclusion tolerance
 - More diverse paths
 - Creative, varied outputs
 
 ### Strict Coherence (τ=0.9, ρ=0.1)
+
 - Maximum semantic consistency
 - Very tight semantic fit
 - Minimal diversity
 - Highly focused paths
 
 ### Diverse Sampling (τ=0.6, ρ=0.5)
+
 - Balance novelty and relevance
 - Moderate thresholds
 - Controlled exploration
@@ -118,6 +123,7 @@ else:
 ### 3. Selection Strategies
 
 **Greedy** (deterministic):
+
 ```python
 result = hrt.select_next_by_priority(
     current_index=idx,
@@ -126,6 +132,7 @@ result = hrt.select_next_by_priority(
 ```
 
 **Stochastic** (probabilistic):
+
 ```python
 result = hrt.select_next_by_priority(
     current_index=idx,
@@ -178,9 +185,13 @@ path = hrt.find_path_by_priority(
 
 ### Computational Complexity
 
-- **BSS computation**: O(m) where m = number of HLL registers
-- **Selecting from n candidates**: O(n × m)
-- **Path finding**: O(max_steps × dimension × m)
+- **BSS computation**: **O(m/w)** where m = number of HLL registers, w = word size (64 bits)
+  - Uses **bitwise operations** on binary vectors (AND, AND NOT, popcount)
+  - Intersection: `H1 ∩ H2` = bitwise AND → O(m/w)
+  - Difference: `H1 \ H2` = bitwise AND NOT → O(m/w)
+  - **Effectively O(1) for typical m=2^14=16,384** (256 words @ 64-bit)
+- **Selecting from n candidates**: **O(n)** (constant-time BSS per candidate)
+- **Path finding**: **O(max_steps × dimension)** (vectorized BSS operations)
 
 ### Memory Requirements
 
@@ -238,6 +249,7 @@ From **"HLLSet Theory: Contextual Anti-Sets and the Selection Principle"**:
 ## Examples
 
 See:
+
 - `core/hrt.py` - Section 11 of main() demonstration
 - `demo_hrt_theory.ipynb` - Interactive examples
 - `HRT_LATTICE_THEORY.md` - Extended algorithms and theory

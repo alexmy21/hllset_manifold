@@ -115,12 +115,14 @@ hash_3 = hash("thequickbrown")  # Concatenated: "the" + "quick" + "brown"
 ```
 
 **Why This Works**:
+
 - Different n-token groups produce different hashes naturally (up to collision)
 - `hash("the")` ≠ `hash("thequick")` ≠ `hash("thequickbrown")`
 - **Content addressable**: Given tokens and knowing which n-group, hash is deterministic
 - **No prefixes needed**: Natural concatenation distinguishes n-groups
 
 **Lookup Example**:
+
 ```python
 # To look up 1-token "the": compute hash("the"), check 1-token HLLSet
 # To look up 2-token ("the", "quick"): compute hash("thequick"), check 2-token HLLSet
@@ -447,6 +449,7 @@ for i in range(len(tokens) - 2):
 ```
 
 **Properties**:
+
 - **No prefixes needed**: Natural concatenation creates different hashes
 - **Fully content addressable**: 
   - Compute hash from tokens → (reg, zeros)
@@ -456,6 +459,7 @@ for i in range(len(tokens) - 2):
 - **Collision-resistant**: Different n-tokens rarely collide (up to hash function limits)
 
 **Lookup Process**:
+
 ```python
 # Query by substring - returns results from ALL n-groups
 query = "token"

@@ -3,6 +3,12 @@
 Test n-token ingestion algorithm with LUT disambiguation.
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from core.manifold_os import (
     ManifoldOS, IngestDriver, TokenizationConfig,
     NTokenRepresentation, LUTRecord

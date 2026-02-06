@@ -102,11 +102,16 @@ def test_ingest_basic():
     
     # Ingest text
     text = "hello world"
-    hllset = os.ingest(text)
+    representation = os.ingest(text)
     
+    assert representation is not None
+    # Get 1-token HLLSet (individual tokens)
+    hllset = representation.hllsets.get(1)
     assert hllset is not None
-    assert hllset.cardinality() == 2.0  # "hello" and "world"
-    print(f"  ✓ Ingested '{text}' → cardinality={hllset.cardinality()}")
+    # HLL is probabilistic, so allow small error margin (2 tokens ± 10%)
+    card = hllset.cardinality()
+    assert 1.8 <= card <= 2.2, f"Expected ~2 tokens, got {card}"
+    print(f"  ✓ Ingested '{text}' → cardinality={card}")
     
     # Check driver stats
     drivers = os.list_drivers()
@@ -131,14 +136,15 @@ def test_ingest_batch():
         "third document"
     ]
     
-    hllsets = os.ingest_batch(documents)
+    representations = os.ingest_batch(documents)
     
-    assert len(hllsets) == 3
-    print(f"  ✓ Ingested {len(hllsets)} documents")
+    assert len(representations) == 3
+    print(f"  ✓ Ingested {len(representations)} documents")
     
-    # Check cardinalities
-    for i, hllset in enumerate(hllsets, 1):
-        card = hllset.cardinality()
+    # Check cardinalities (using 1-token HLLSets)
+    for i, rep in enumerate(representations, 1):
+        hllset = rep.hllsets.get(1)
+        card = hllset.cardinality() if hllset else 0
         print(f"  ✓ Document {i}: cardinality={card}")
     
     # Check driver stats
@@ -170,8 +176,12 @@ def test_tokenization_config():
     # Ingest with different configs
     text = "Hi, world! Testing 123."
     
-    default_hllset = os.ingest(text, driver_id="ingest_default")
-    custom_hllset = os.ingest(text, driver_id="custom")
+    default_rep = os.ingest(text, driver_id="ingest_default")
+    custom_rep = os.ingest(text, driver_id="custom")
+    
+    # Get 1-token HLLSets
+    default_hllset = default_rep.hllsets.get(1)
+    custom_hllset = custom_rep.hllsets.get(1)
     
     print(f"  ✓ Default: cardinality={default_hllset.cardinality()}")
     print(f"  ✓ Custom:  cardinality={custom_hllset.cardinality()}")
@@ -191,9 +201,14 @@ def test_immutability():
     
     # Ingest same data multiple times
     text = "immutable data"
-    hllset1 = os.ingest(text)
-    hllset2 = os.ingest(text)
-    hllset3 = os.ingest(text)
+    rep1 = os.ingest(text)
+    rep2 = os.ingest(text)
+    rep3 = os.ingest(text)
+    
+    # Get 1-token HLLSets
+    hllset1 = rep1.hllsets.get(1)
+    hllset2 = rep2.hllsets.get(1)
+    hllset3 = rep3.hllsets.get(1)
     
     # Should all have same hash (content-addressed)
     assert hllset1.name == hllset2.name == hllset3.name
@@ -214,8 +229,12 @@ def test_idempotence():
     
     # Ingest data twice - should get same HLLSet (content-addressed)
     text = "idempotent operation"
-    hllset1 = os.ingest(text)
-    hllset2 = os.ingest(text)
+    rep1 = os.ingest(text)
+    rep2 = os.ingest(text)
+    
+    # Get 1-token HLLSets
+    hllset1 = rep1.hllsets.get(1)
+    hllset2 = rep2.hllsets.get(1)
     
     # Same input = same hash (idempotent ingestion)
     assert hllset1.name == hllset2.name
@@ -316,9 +335,13 @@ def test_universal_constructor_pattern():
     
     # D - Interface: Ingest external data
     raw_data = "external reality observation"
-    hllset = os.ingest(raw_data)
-    assert hllset is not None
+    representation = os.ingest(raw_data)
+    assert representation is not None
     print("  ✓ [D] Interface: Ingested external data")
+    
+    # Get 1-token HLLSet for further operations
+    hllset = representation.hllsets.get(1)
+    assert hllset is not None
     
     # B - Copier: Reproduce structure
     reproduced = os.kernel.reproduce(hllset)
@@ -369,8 +392,11 @@ def test_parallel_processing():
     
     hllsets = []
     for i, text in enumerate(texts):
-        hllset = os.ingest(text, driver_id=f"parallel_{i}")
-        hllsets.append(hllset)
+        representation = os.ingest(text, driver_id=f"parallel_{i}")
+        # Get 1-token HLLSet
+        hllset = representation.hllsets.get(1)
+        if hllset:
+            hllsets.append(hllset)
     
     assert len(hllsets) == 3
     print(f"  ✓ Processed {len(hllsets)} documents in parallel")

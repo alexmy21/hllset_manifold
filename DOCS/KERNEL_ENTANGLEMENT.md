@@ -10,6 +10,8 @@ Pure stateless transformations on HLLSets
 
 ### Level 2: Entanglement Operations (ICASRA-Inspired)
 
+**ICASRA** (Immutable Content-Addressable Self-Reproducing Automata)
+
 Detection and validation of structural isomorphisms between HLLSets
 
 ### Level 3: Network Operations (Multi-Installation)

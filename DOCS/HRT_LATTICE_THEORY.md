@@ -2,7 +2,7 @@
 
 ## Overview
 
-The HRT Lattice W is a directed graph structure that parallels the Adjacency Matrix (AM) but operates at a higher level of abstraction, with HLLSets as elements rather than tokens.
+The **HRT** (Hashed Relational Tensor) Lattice **W** is a directed graph structure that parallels the Adjacency Matrix (AM) but operates at a higher level of abstraction, with HLLSets as elements rather than tokens.
 
 ## Structural Parallels: AM vs W
 
@@ -166,7 +166,8 @@ To ensure **sustainability** of the lattice evolution, we apply **Noether's theo
 ### Conservation Law
 
 For sustainable evolution:
-```
+
+```text
 |D| - |N| = 0
 
 i.e., |D| = |N|
@@ -574,9 +575,14 @@ def adaptive_thresholds(H_current, candidates, desired_diversity=0.5):
 
 **Computational Complexity**:
 
-- Computing BSS: O(m) where m = number of HLL registers
-- Selecting from n candidates: O(n × m)
-- Beam search: O(beam_width × depth × n × m)
+- Computing BSS: **O(m/w)** where m = number of HLL registers, w = word size (64 bits)
+  - BSS uses **bitwise operations** on binary vectors (AND, AND NOT, popcount)
+  - Intersection: `H1 ∩ H2` = bitwise AND → O(m/w)
+  - Difference: `H1 \ H2` = bitwise AND NOT → O(m/w)
+  - Cardinality: popcount → O(m/w)
+  - **Effectively O(1) for typical m=2^14=16,384 registers** (256 words @ 64-bit)
+- Selecting from n candidates: **O(n)** (constant-time BSS per candidate)
+- Beam search: **O(beam_width × depth × n)** (not O(n×m) due to vectorized ops)
 
 **Memory**:
 

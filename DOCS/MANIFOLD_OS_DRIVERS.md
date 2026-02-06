@@ -2,7 +2,7 @@
 
 ## Overview
 
-ManifoldOS implements the **Universal Constructor** pattern from ICASRA theory with resource-managed drivers. The design leverages immutability and content-addressability to eliminate the need for complex scheduling while providing robust driver lifecycle management.
+ManifoldOS implements the **Universal Constructor** pattern from ICASRA  (Immutable Content-Addressable Self-Reproducing Automata) theory with resource-managed drivers. The design leverages immutability and content-addressability to eliminate the need for complex scheduling while providing robust driver lifecycle management.
 
 ## ICASRA Pattern Implementation
 

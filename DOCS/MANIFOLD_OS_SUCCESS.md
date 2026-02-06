@@ -11,13 +11,15 @@ Successfully implemented **ManifoldOS** as a Universal Constructor following the
 **Location**: [core/manifold_os.py](core/manifold_os.py#L48-L136)
 
 **States**:
-```
+
+```text
 CREATED → IDLE ⇄ ACTIVE
            ↓        ↓
         ERROR → DEAD
 ```
 
 **Methods**:
+
 - `wake()` - Wake driver from created/idle
 - `activate()` - Transition to active state
 - `idle()` - Return to idle state
@@ -26,6 +28,7 @@ CREATED → IDLE ⇄ ACTIVE
 - `mark_dead()` - Mark for removal
 
 **Statistics Tracking**:
+
 - Operations count
 - Errors count
 - Created timestamp
@@ -39,6 +42,7 @@ CREATED → IDLE ⇄ ACTIVE
 **Purpose**: Gateway between external reality and the system (ICASRA **D - Interface**)
 
 **Features**:
+
 - Configurable tokenization (min/max length, case, punctuation)
 - Single and batch processing
 - Content-addressed output (HLLSet)
@@ -46,6 +50,7 @@ CREATED → IDLE ⇄ ACTIVE
 - Automatic statistics tracking
 
 **Configuration**:
+
 ```python
 @dataclass
 class TokenizationConfig:
@@ -61,30 +66,35 @@ class TokenizationConfig:
 **Location**: [core/manifold_os.py](core/manifold_os.py#L673-L900)
 
 **Universal Constructor (ICASRA)**:
+
 - **A (Constructor)**: `commit()` - validates and persists states
 - **B (Copier)**: `reproduce()` - copies with structure preservation
 - **C (Controller)**: Driver lifecycle management
 - **D (Interface)**: `IngestDriver` - tokenizes external data
 
 **Driver Registry**:
+
 - `register_driver()` - Add driver to OS
 - `unregister_driver()` - Remove driver
 - `get_driver()` - Get driver by ID
 - `list_drivers()` - List all with status
 
 **Lifecycle Management**:
+
 - `wake_driver()` - Wake specific driver
 - `idle_driver()` - Put driver to idle
 - `restart_driver()` - Restart errored driver
 - `cleanup_dead_drivers()` - Remove dead drivers
 
 **Health Monitoring**:
+
 - `start_driver_monitoring()` - Start background monitoring
 - `stop_driver_monitoring()` - Stop monitoring
 - Automatic restart of errored drivers
 - Automatic cleanup of dead drivers
 
 **Ingest Operations**:
+
 - `ingest()` - Ingest single document
 - `ingest_batch()` - Batch ingest multiple documents
 
@@ -101,6 +111,7 @@ All integrated with new driver management system.
 ## ICASRA Pattern Implementation
 
 ### A - Constructor (Validation & Commitment)
+
 ```python
 state = OSState(
     state_hash="",
@@ -111,20 +122,24 @@ state = OSState(
 )
 state_hash = os.store.commit(state)
 ```
+
 - Content-addressed states (SHA1 hash)
 - Immutable snapshots
 - Git-like storage
 
 ### B - Copier (Structural Preservation)
+
 ```python
 reproduced = os.kernel.reproduce(hllset)
 similarity = hllset.similarity(reproduced)  # 1.0 (perfect)
 ```
+
 - Preserves structure via morphisms
 - Maintains ε-isomorphism
 - Lossless reproduction
 
 ### C - Controller (Resource Management)
+
 ```python
 # Register and manage drivers
 os.register_driver(driver)
@@ -133,16 +148,19 @@ os.ingest(data, driver_id="my_driver")
 os.restart_driver("my_driver")  # On error
 os.cleanup_dead_drivers()  # Periodic cleanup
 ```
+
 - Wake/idle/restart/remove drivers
 - No complex scheduling (immutability)
 - Processes can't harm each other
 
 ### D - Interface (External Data)
+
 ```python
 # Tokenize and ingest external data
 hllset = os.ingest("external reality observation")
 # Returns content-addressed HLLSet
 ```
+
 - Tokenization configurable
 - Batch processing support
 - Immutable output
@@ -150,6 +168,7 @@ hllset = os.ingest("external reality observation")
 ## Key Design Principles
 
 ### 1. Immutability
+
 - All HLLSets immutable after creation
 - States are snapshots, not mutable objects
 - Drivers produce new data, never modify existing
@@ -157,6 +176,7 @@ hllset = os.ingest("external reality observation")
 **Benefit**: Processes cannot harm each other
 
 ### 2. Idempotence
+
 - Same input always produces same output
 - Operations can be repeated safely
 - Ingestion of same data produces same hash
@@ -164,6 +184,7 @@ hllset = os.ingest("external reality observation")
 **Benefit**: No complex transaction management needed
 
 ### 3. Content Addressability
+
 - HLLSets identified by SHA1 of registers
 - States identified by hash of content
 - Git-like storage with content-addressed lookup
@@ -171,6 +192,7 @@ hllset = os.ingest("external reality observation")
 **Benefit**: Automatic deduplication and integrity
 
 ### 4. No Scheduling Needed
+
 - Immutability eliminates race conditions
 - No locks needed for data access
 - Pure functional operations
@@ -180,9 +202,11 @@ hllset = os.ingest("external reality observation")
 ## Testing
 
 ### Test Suite
+
 **Location**: [tests/test_manifold_drivers.py](tests/test_manifold_drivers.py)
 
 **Tests** (11 total, all passing):
+
 1. ✓ Driver registration/unregistration
 2. ✓ Driver lifecycle state transitions
 3. ✓ Basic data ingestion
@@ -196,9 +220,11 @@ hllset = os.ingest("external reality observation")
 11. ✓ Parallel processing capability
 
 ### Demo Suite
+
 **Location**: [examples/demo_manifold_drivers.py](examples/demo_manifold_drivers.py)
 
 **Demos** (7 total):
+
 1. Basic data ingestion
 2. Batch ingestion
 3. Custom tokenization
@@ -210,6 +236,7 @@ hllset = os.ingest("external reality observation")
 ## Usage Examples
 
 ### Basic Usage
+
 ```python
 from core.manifold_os import ManifoldOS
 
@@ -224,6 +251,7 @@ print(f"Cardinality: {hllset.cardinality()}")  # 8 unique words
 ```
 
 ### Batch Processing
+
 ```python
 documents = [
     "Machine learning is amazing",
@@ -242,6 +270,7 @@ print(f"Total tokens: {union.cardinality()}")
 ```
 
 ### Custom Tokenization
+
 ```python
 from core.manifold_os import IngestDriver, TokenizationConfig
 
@@ -262,6 +291,7 @@ hllset = os.ingest("Hello, World!", driver_id="custom")
 ```
 
 ### Driver Monitoring
+
 ```python
 # Start monitoring
 os.start_driver_monitoring()
@@ -282,6 +312,7 @@ os.stop_driver_monitoring()
 ```
 
 ### ICASRA Pattern
+
 ```python
 # D - Interface: Ingest
 hllset = os.ingest("universal constructor")
@@ -306,7 +337,7 @@ state_hash = os.store.commit(state)
 
 ## Architecture
 
-```
+```text
 ManifoldOS (Universal Constructor)
 ├── Driver Management (C - Controller)
 │   ├── IngestDriver (D - Interface)
@@ -356,23 +387,28 @@ ManifoldOS (Universal Constructor)
 ## Performance Characteristics
 
 ### Driver Operations
+
 - Registration: O(1) - dictionary insert
 - Lookup: O(1) - dictionary access
 - Lifecycle: O(1) - state transitions with lock
 - Cleanup: O(n) - scan all drivers
 
 ### Ingestion
+
 - Single: O(k) - k = number of tokens
 - Batch: O(n*k) - n documents, k tokens each
 - Parallel: O(k) per driver (truly parallel, no locks on data)
 
 ### Storage
+
 - Commit: O(1) - dictionary insert with hash
 - Checkout: O(1) - dictionary lookup
 - History: O(h) - h = history depth
 
 ### No Locks on Data
+
 Because data is immutable:
+
 - Read: No locks needed
 - Write: Creates new object (no conflicts)
 - Union/Intersection: Pure functional (no side effects)
@@ -380,6 +416,7 @@ Because data is immutable:
 ## Future Extensions
 
 ### Additional Drivers
+
 1. **QueryDriver** - Query HLLSet collections
 2. **TransformDriver** - Apply transformations
 3. **NetworkDriver** - Communicate with other nodes
@@ -387,12 +424,14 @@ Because data is immutable:
 5. **AnalyticsDriver** - Metrics and statistics
 
 ### Enhanced Monitoring
+
 1. Performance metrics (latency, throughput)
 2. Resource usage (memory, CPU)
 3. Alert system
 4. Real-time dashboard
 
 ### Distribution
+
 1. Content distribution across nodes
 2. Driver migration
 3. Consensus for state transitions
@@ -401,7 +440,7 @@ Because data is immutable:
 ## Comparison to Traditional OS
 
 | Feature | Traditional OS | ManifoldOS |
-|---------|---------------|------------|
+| --------- | --------------- | ------------ |
 | Scheduling | Complex | Not needed |
 | Locking | Mutexes/semaphores | Minimal (driver state only) |
 | Race Conditions | Must prevent | Impossible (immutable) |
@@ -430,9 +469,11 @@ The system demonstrates that **immutability + content-addressability = simple, r
 ## Files Modified/Created
 
 ### Modified
+
 - [core/manifold_os.py](core/manifold_os.py) - Added driver management (lines 1-265, 673-900)
 
 ### Created
+
 - [MANIFOLD_OS_DRIVERS.md](MANIFOLD_OS_DRIVERS.md) - Complete documentation
 - [examples/demo_manifold_drivers.py](examples/demo_manifold_drivers.py) - Executable demos
 - [tests/test_manifold_drivers.py](tests/test_manifold_drivers.py) - Test suite
@@ -454,6 +495,7 @@ python -c "from core.manifold_os import ManifoldOS; os = ManifoldOS(); print(os.
 ## Next Steps
 
 The ManifoldOS is now ready for:
+
 1. Adding more drivers (Query, Transform, Network, etc.)
 2. Integration with existing systems (Perceptron, Pipeline, Evolution)
 3. Enhanced monitoring and metrics
