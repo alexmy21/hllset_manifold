@@ -1352,7 +1352,18 @@ class ManifoldOS:
     - No scheduling: Pure functional eliminates need
     """
     
-    def __init__(self, storage_path: Optional[Path] = None, hrt_config: Optional[HRTConfig] = None):
+    def __init__(self, storage_path: Optional[Path] = None, hrt_config: Optional[HRTConfig] = None,
+                 lut_db_path: Optional[str] = None, extensions: Optional[Dict[str, Dict[str, Any]]] = None):
+        """
+        Initialize ManifoldOS with optional extensions.
+        
+        Args:
+            storage_path: Path for persistent HLLSet storage
+            hrt_config: Configuration for HRT creation
+            lut_db_path: (DEPRECATED) Path to DuckDB file - use extensions param instead
+            extensions: Extension configuration dictionary
+                       Example: {'storage': {'type': 'duckdb', 'db_path': ':memory:'}}
+        """
         self.kernel = Kernel()
         self.store = PersistentStore(storage_path)
         self.evolution = EvolutionLoop()
@@ -1364,6 +1375,16 @@ class ManifoldOS:
         # Entanglement engine
         self.entanglement_engine = EntanglementEngine(self.kernel)
         self.entanglement_morphisms: Dict[str, EntanglementMorphism] = {}  # hrt_hash -> morphism
+        
+        # Extension system
+        from core.extensions import ExtensionRegistry, DuckDBStorageExtension
+        self.extensions = ExtensionRegistry()
+        
+        # Setup storage extension
+        self._setup_storage_extension(storage_path, lut_db_path, extensions)
+        
+        # Setup storage extension
+        self._setup_storage_extension(storage_path, lut_db_path, extensions)
         
         # Components
         self.perceptrons: Dict[str, Perceptron] = {}
@@ -1385,6 +1406,50 @@ class ManifoldOS:
         # Statistics
         self.start_time = time.time()
         self.processing_cycles = 0
+    
+    def _setup_storage_extension(self, storage_path, lut_db_path, extensions):
+        """
+        Setup storage extension with backward compatibility.
+        
+        Priority order:
+          1. extensions parameter (new way)
+          2. lut_db_path parameter (backward compatibility)
+          3. Auto-detect from storage_path
+        """
+        from core.extensions import DuckDBStorageExtension
+        
+        # Determine configuration
+        if extensions and 'storage' in extensions:
+            # New way: explicit extension config
+            storage_config = extensions['storage']
+        elif lut_db_path is not None:
+            # Backward compatibility: lut_db_path parameter
+            storage_config = {'type': 'duckdb', 'db_path': lut_db_path}
+        else:
+            # Auto-detect: default location
+            if storage_path:
+                db_path = str(storage_path / "metadata.duckdb")
+            else:
+                db_path = "metadata.duckdb"
+            storage_config = {'type': 'duckdb', 'db_path': db_path}
+        
+        # Register storage extension
+        if storage_config.get('type') == 'duckdb':
+            extension = DuckDBStorageExtension()
+            config = {'db_path': storage_config.get('db_path', ':memory:')}
+            self.extensions.register('storage', extension, config)
+    
+    @property
+    def lut_store(self):
+        """
+        Get LUT store from storage extension.
+        
+        Maintains backward compatibility - code using self.lut_store still works.
+        """
+        storage = self.extensions.get('storage')
+        if storage and storage.is_available():
+            return storage.lut_store
+        return None
     
     def _init_ingest_driver(self):
         """Initialize default ingest driver."""
@@ -1564,13 +1629,25 @@ class ManifoldOS:
     # Ingest Operations (D - Interface)
     # -------------------------------------------------------------------------
     
-    def ingest(self, raw_data: str, driver_id: Optional[str] = None) -> Optional[NTokenRepresentation]:
+    def ingest(self, raw_data: str, driver_id: Optional[str] = None, 
+               metadata: Optional[dict] = None) -> Optional[NTokenRepresentation]:
         """
         Ingest raw data from external reality using n-token algorithm.
+        
+        Enterprise-to-AI Metadata Bridge:
+        1. Process raw data → NTokenRepresentation (in-memory)
+        2. Store HLLSets → Content-addressed fingerprints
+        3. Commit LUTs → Persistent metadata (DuckDB)
+        
+        The LUT persistence enables:
+        - AI → Metadata: Query tokens by (reg, zeros)
+        - Metadata → ED: Trace back to source data
+        - Explainability: Link decisions to original records
         
         Args:
             raw_data: Raw string data to ingest
             driver_id: Optional specific driver ID (default: "ingest_default")
+            metadata: Optional metadata (source, timestamp, user, etc.)
         
         Returns:
             NTokenRepresentation with multiple HLLSets and LUTs, or None on error
@@ -1583,11 +1660,35 @@ class ManifoldOS:
             return None
         
         try:
+            # STEP 1: Process in-memory (fast)
             representation = driver.process(raw_data, self.kernel)
             
-            # Store all HLLSets in persistent storage
+            # STEP 2: Store HLLSets (content-addressed)
             for n, hllset in representation.hllsets.items():
                 self.store.store_hllset(hllset)
+            
+            # STEP 3: Commit LUTs to persistent metadata store
+            if self.lut_store:
+                for n, lut in representation.luts.items():
+                    hllset_hash = representation.hllsets[n].name
+                    
+                    # Add metadata (source tracking)
+                    commit_metadata = metadata or {}
+                    commit_metadata.update({
+                        'n': n,
+                        'driver_id': driver_id,
+                        'original_length': len(representation.original_tokens),
+                        'ingested_at': time.time()
+                    })
+                    
+                    # Commit to DuckDB
+                    commit_id = self.lut_store.commit_lut(
+                        n=n,
+                        lut=lut,
+                        hllset_hash=hllset_hash,
+                        metadata=commit_metadata
+                    )
+                    print(f"  ✓ LUT committed: n={n}, hash={hllset_hash[:16]}..., id={commit_id}")
             
             return representation
         except RuntimeError as e:
@@ -1625,6 +1726,96 @@ class ManifoldOS:
         except Exception as e:
             print(f"Batch ingest failed: {e}")
             return []
+    
+    # -------------------------------------------------------------------------
+    # Metadata Query Operations (ED ↔ AI Bridge)
+    # -------------------------------------------------------------------------
+    
+    def query_tokens_from_metadata(self, n: int, reg: int, zeros: int,
+                                   hllset_hash: Optional[str] = None) -> List[Tuple[str, ...]]:
+        """
+        Query tokens from persistent metadata store (AI → ED grounding).
+        
+        This is the critical bridge operation that links AI operations
+        back to source enterprise data.
+        
+        Args:
+            n: N-token group size (1, 2, 3, ...)
+            reg: HLL register index
+            zeros: Leading zeros count
+            hllset_hash: Optional - filter by specific HLLSet
+        
+        Returns:
+            List of token tuples that map to this (reg, zeros)
+        
+        Example:
+            # AI has (reg=42, zeros=3) from HLLSet fingerprint
+            # Ground back to source tokens:
+            tokens = os.query_tokens_from_metadata(n=1, reg=42, zeros=3)
+            # Returns: [('customer',), ('revenue',), ...]
+        """
+        if not self.lut_store:
+            print("⚠ LUT store not available")
+            return []
+        
+        return self.lut_store.get_tokens(n, reg, zeros, hllset_hash)
+    
+    def query_by_token(self, n: int, token_tuple: Tuple[str, ...]) -> List[Tuple[int, int]]:
+        """
+        Reverse lookup: Find (reg, zeros) keys for a token (ED → AI).
+        
+        Args:
+            n: N-token group size
+            token_tuple: Token tuple to search for
+        
+        Returns:
+            List of (reg, zeros) keys
+        
+        Example:
+            # Enterprise has token "customer"
+            # Find HLLSet coordinates:
+            keys = os.query_by_token(n=1, token_tuple=('customer',))
+            # Returns: [(42, 3), (107, 1), ...]
+        """
+        if not self.lut_store:
+            print("⚠ LUT store not available")
+            return []
+        
+        return self.lut_store.query_by_token(n, token_tuple)
+    
+    def get_ingestion_metadata(self, hllset_hash: str) -> Optional[dict]:
+        """
+        Get metadata for an ingested HLLSet.
+        
+        Returns metadata like:
+        - Source information
+        - Ingestion timestamp
+        - Driver ID
+        - Original token count
+        - Custom fields
+        
+        Args:
+            hllset_hash: Content-addressed hash of HLLSet
+        
+        Returns:
+            Metadata dict or None
+        """
+        if not self.lut_store:
+            return None
+        
+        return self.lut_store.get_metadata(hllset_hash)
+    
+    def get_lut_stats(self) -> Optional[dict]:
+        """
+        Get statistics about persistent LUT storage.
+        
+        Returns:
+            Dict with stats: total records, unique HLLSets, n-groups, etc.
+        """
+        if not self.lut_store:
+            return None
+        
+        return self.lut_store.get_stats()
 
     
     # -------------------------------------------------------------------------

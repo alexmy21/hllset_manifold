@@ -4,6 +4,34 @@
 
 The **HRT** (Hashed Relational Tensor) Lattice **W** is a directed graph structure that parallels the Adjacency Matrix (AM) but operates at a higher level of abstraction, with HLLSets as elements rather than tokens.
 
+## Fundamental Principles
+
+### IICA Core (Immutable, Idempotent, Content Addressable)
+
+All HRT operations must preserve IICA properties:
+
+- **Immutable**: Lattices never change after creation
+- **Idempotent**: Recomputing gives identical results
+- **Content Addressable**: SHA1 hashes identify all structures
+
+**Scope**: Each perceptron has its own AM and W lattices. The hash morphism
+must be consistent within a perceptron, but different perceptrons can use
+different hash functions. This enables multi-modal architectures.
+
+### Consistency Criterion (Entanglement)
+
+For lattice mappings φ: L₁ → L₂ to preserve structure:
+
+>**∀ a ≠ b in L₁: φ(a) ≉ φ(b) in L₂**
+
+This ensures distinctness preservation (approximate injectivity).
+
+BSS (Bell State Similarity) is ONE implementation of this criterion.
+Other measures (degree similarity, custom metrics) are valid as long as
+they satisfy the consistency requirement.
+
+See [ENTANGLEMENT_CONSISTENCY_CRITERION.md](ENTANGLEMENT_CONSISTENCY_CRITERION.md) for details.
+
 ## Structural Parallels: AM vs W
 
 ### Similarities
@@ -11,7 +39,7 @@ The **HRT** (Hashed Relational Tensor) Lattice **W** is a directed graph structu
 1. **Same Dimensions**: Both have dimension `N × N` where `N = 2^P * h_bits + 2`
 2. **Directed Structures**: Both define directed graphs (not necessarily acyclic)
 3. **Cell Strength**: Cell values represent link strength between nodes
-4. **Boundary Markers**: 
+4. **Boundary Markers**:
    - AM: START/END tokens (special `(reg, zeros)` identifiers)
    - W: Empty HLLSet (∅) and Universal HLLSet (U)
 

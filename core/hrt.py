@@ -389,8 +389,9 @@ class HLLSetLattice:
         Standardized lattice comparison for dual-lattice systems.
         
         Compares two lattices by STRUCTURE (graph topology), not by node content.
-        Since cross-modal lattices have mutually exclusive HLLSets (disjoint token
-        spaces), we compare by structural properties like node degrees.
+        This structural comparison is particularly useful when comparing lattices
+        with different token spaces (e.g., cross-modal systems) or when measuring
+        entanglement between lattices with overlapping but non-identical HLLSets.
         
         Algorithm:
         1. Compute node degrees (morphism counts) in each lattice

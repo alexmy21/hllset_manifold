@@ -342,6 +342,77 @@ cdef class HLLCore:
         """Get registers as numpy array (copy for safety)."""
         return self.registers.copy()
     
+    def get_registers_roaring(self):
+        """
+        Get registers as Roaring bitmap (compressed).
+        
+        Encodes non-zero registers as: position * 256 + value
+        This allows efficient compression and storage.
+        
+        Returns:
+            bytes: Serialized Roaring bitmap
+        """
+        try:
+            from pyroaring import BitMap
+        except ImportError:
+            raise ImportError("pyroaring is required for Roaring bitmap compression. Install with: pip install pyroaring")
+        
+        rb = BitMap()
+        cdef int i
+        cdef uint8_t val
+        
+        # Encode non-zero registers
+        for i in range(self.m):
+            val = self.registers_view[i]
+            if val > 0:
+                # Encode: position * 256 + value
+                rb.add(i * 256 + val)
+        
+        return rb.serialize()
+    
+    def set_registers_roaring(self, bytes compressed_data):
+        """
+        Set registers from Roaring bitmap (compressed).
+        
+        Args:
+            compressed_data: Serialized Roaring bitmap
+        """
+        try:
+            from pyroaring import BitMap
+        except ImportError:
+            raise ImportError("pyroaring is required for Roaring bitmap compression. Install with: pip install pyroaring")
+        
+        rb = BitMap.deserialize(compressed_data)
+        cdef int encoded, position, value
+        
+        # Clear existing registers
+        self.registers[:] = 0
+        
+        # Decode from bitmap
+        for encoded in rb:
+            position = encoded // 256
+            value = encoded % 256
+            if position < self.m:
+                self.registers_view[position] = value
+    
+    def get_compression_stats(self):
+        """
+        Get compression statistics for current registers.
+        
+        Returns:
+            dict with original_size, compressed_size, compression_ratio
+        """
+        cdef int original_size = self.m  # bytes
+        compressed = self.get_registers_roaring()
+        cdef int compressed_size = len(compressed)
+        
+        return {
+            'original_size': original_size,
+            'compressed_size': compressed_size,
+            'compression_ratio': original_size / compressed_size if compressed_size > 0 else 0.0,
+            'non_zero_registers': sum(1 for r in self.registers if r > 0)
+        }
+    
     def set_registers(self, cnp.ndarray[uint8_t, ndim=1] new_registers):
         """Set registers from numpy array."""
         if len(new_registers) != self.m:

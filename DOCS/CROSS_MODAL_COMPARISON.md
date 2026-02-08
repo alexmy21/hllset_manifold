@@ -1,10 +1,20 @@
-# Cross-Modal Lattice Comparison: Structural vs Content-Based
+# Cross-Modal Lattice Comparison: Structural Topology Preservation
 
-## The Problem
+## Overview
 
-When comparing two lattices representing the same reality through different channels (e.g., sensory vs language), we face a fundamental challenge:
+When comparing two lattices, we have multiple approaches depending on the relationship
+between their token spaces. The fundamental principle is the **consistency criterion**:
 
-**The token spaces are mutually exclusive (disjoint).**
+**For any a ≠ b in L₁, the mapping φ(a) ≉ φ(b) in L₂**
+
+This preserves distinctness (approximate injectivity). BSS is ONE valid implementation
+of this criterion, but structural comparison provides an alternative when token spaces
+are disjoint or when we want to compare topology independent of content.
+
+## The Cross-Modal Case
+
+When comparing lattices representing the same reality through different channels
+(e.g., sensory vs language), token spaces may be completely disjoint.
 
 ### Example
 
@@ -22,7 +32,7 @@ When comparing two lattices representing the same reality through different chan
 Sensory_HLLSet ∩ Language_HLLSet = ∅ (empty intersection)
 ```
 
-## Why BSS Fails for Cross-Modal Comparison
+## Why BSS is Insufficient for Disjoint Token Spaces
 
 BSS (Bell State Similarity) is defined by set intersection:
 

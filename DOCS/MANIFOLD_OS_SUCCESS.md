@@ -4,6 +4,25 @@
 
 Successfully implemented **ManifoldOS** as a Universal Constructor following the ICASRA pattern with full driver lifecycle management. The system leverages immutability and content-addressability to provide robust resource management without complex scheduling.
 
+## Core Principles
+
+### IICA Foundation
+
+All MOS operations preserve:
+
+- **Immutable**: No mutable state, all data structures permanent once created
+- **Idempotent**: Operations repeatable with identical outcomes
+- **Content Addressable**: SHA1 hashes identify all artifacts
+
+### Consistency Criterion
+
+For mappings between lattices: **∀ a ≠ b in L₁: φ(a) ≉ φ(b) in L₂**
+
+This preserves structural topology. BSS is one implementation; custom metrics
+are valid as long as they maintain distinctness preservation.
+
+See [ENTANGLEMENT_CONSISTENCY_CRITERION.md](ENTANGLEMENT_CONSISTENCY_CRITERION.md).
+
 ## What Was Implemented
 
 ### 1. Driver Abstraction (`Driver` base class)

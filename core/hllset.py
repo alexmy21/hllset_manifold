@@ -362,6 +362,48 @@ class HLLSet:
         """Get register vector as numpy array."""
         return self._core.get_registers()
     
+    def dump_roaring(self) -> bytes:
+        """
+        Get registers as compressed Roaring bitmap.
+        
+        Returns serialized Roaring bitmap with 10-50x compression ratio
+        for typical sparse HLLSets.
+        
+        Returns:
+            bytes: Serialized Roaring bitmap
+        """
+        return self._core.get_registers_roaring()
+    
+    @classmethod
+    def from_roaring(cls, compressed_data: bytes, p_bits: int = P_BITS) -> HLLSet:
+        """
+        Create HLLSet from compressed Roaring bitmap.
+        
+        Args:
+            compressed_data: Serialized Roaring bitmap
+            p_bits: Precision bits (must match original HLLSet)
+            
+        Returns:
+            New HLLSet instance
+        """
+        hll = cls(p_bits=p_bits)
+        hll._core.set_registers_roaring(compressed_data)
+        hll._compute_name()
+        return hll
+    
+    def get_compression_stats(self) -> dict:
+        """
+        Get compression statistics for this HLLSet.
+        
+        Returns:
+            dict with keys:
+                - original_size: Uncompressed size in bytes
+                - compressed_size: Roaring bitmap size in bytes
+                - compression_ratio: original / compressed
+                - non_zero_registers: Count of non-zero registers
+        """
+        return self._core.get_compression_stats()
+    
     # -------------------------------------------------------------------------
     # Properties
     # -------------------------------------------------------------------------

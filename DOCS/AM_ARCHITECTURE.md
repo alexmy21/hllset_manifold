@@ -4,6 +4,29 @@
 
 The Adjacency Matrix (AM) serves as a bridge between the ingestion and query phases, preserving token order that HLLSets cannot maintain.
 
+## IICA Core Principles
+
+AM construction must satisfy **IICA** properties:
+
+- **Immutable**: Once built, AM never changes
+- **Idempotent**: Re-ingesting same data produces identical AM
+- **Content Addressable**: Cells identified by content hash
+
+The specific tokenization strategy, window size, or overlap approach can vary,
+as long as (within a single perceptron):
+
+1. **Same hash morphism** used for all HLLSets (sha1 with SHARED_SEED)
+2. **Same AM→W transformation** algorithm applied
+3. **IICA properties** preserved throughout
+
+**Note**: Each perceptron has its own AM and W lattices and can use its own
+hash morphism. The consistency requirement is per-perceptron, not global.
+This enables multi-modal systems where different perceptrons process
+different data types with optimized hash functions.
+
+This flexibility allows experimentation with different construction strategies
+while maintaining structural topology preservation.
+
 ## Phase 1: Ingestion (Building the AM)
 
 ```text

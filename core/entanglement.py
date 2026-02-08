@@ -14,6 +14,21 @@ Key Principles:
 - Lattice W guarantees finiteness
 - Entanglement morphism connects similar-degree nodes
 - Maximizes matching pairs between lattices
+
+Fundamental Consistency Criterion (Categorical):
+    For any a ≠ b in L₁, the mapping m(a) ≉ m(b) in L₂
+    
+    This preserves distinctness (approximate injectivity).
+    Due to hash collisions, we use approximate measures (≉) instead of strict equality.
+    
+    BSS (Basic Similarity Score) is ONE implementation of this criterion.
+    Alternative measures can be used as long as they preserve structure:
+    - Degree similarity (cardinality-based)
+    - Register overlap (HLLSet intersection)
+    - Custom domain-specific metrics
+    
+    The core requirement: mapping should preserve structural topology
+    by maintaining distinctness between distinct elements.
 """
 
 from __future__ import annotations
@@ -40,11 +55,20 @@ class EntanglementMeasurement:
     - Register overlap (structural similarity)
     
     This is the M: S × S → R function from the paper.
+    
+    IMPLEMENTATION NOTE:
+    This uses degree + register similarity as the measure.
+    This is ONE valid implementation of the consistency criterion:
+        ∀ a≠b in L₁: m(a) ≉ m(b) in L₂
+    
+    Alternative measures could be used (custom metrics, domain-specific
+    similarity functions, etc.) as long as they preserve distinctness
+    and structural topology.
     """
     source_hash: str          # Hash of source basic HLLSet
     target_hash: str          # Hash of target basic HLLSet
     
-    # Measurements
+    # Measurements (implementation-specific)
     degree_similarity: float  # Based on cardinality match
     register_similarity: float  # Based on HLLSet similarity
     
@@ -73,12 +97,22 @@ class EntanglementMorphism:
     
     Unlike traditional morphisms (functions), this is a relational map:
     - Each node in W(1) can map to multiple nodes in W(2)
-    - Mapping based on degree similarity (consistency)
+    - Mapping based on similarity measures that preserve structure
     - Maximizes total matching pairs
+    
+    FUNDAMENTAL PROPERTY (Categorical Consistency):
+        ∀ a≠b in L₁: m(a) ≉ m(b) in L₂
+        
+    This ensures the mapping preserves distinctness (approximate injectivity).
+    The specific similarity measure (BSS, degree, custom) is implementation-dependent,
+    but all must satisfy this consistency criterion.
     
     This implements the paper's insight:
     "Lattice would be prior and we will implement entanglement morphism 
     as map from one lattice to another."
+    
+    Mutual exclusivity of HLLSets is NOT required—entanglement is about
+    preserving structural topology, not enforcing set disjointness.
     """
     source_lattice_hash: str
     target_lattice_hash: str
