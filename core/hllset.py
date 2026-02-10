@@ -23,7 +23,7 @@ Batch Processing Pattern:
 """
 
 from __future__ import annotations
-from typing import Set, Union, List, Optional, Iterable
+from typing import Set, Tuple, Union, List, Optional, Iterable
 import hashlib
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
@@ -294,53 +294,65 @@ class HLLSet:
     
     def intersect(self, other: HLLSet) -> HLLSet:
         """
-        Intersection with another HLLSet (returns new instance with estimated intersection).
+        Intersection with another HLLSet (returns new composable instance).
         
-        Note: HLL doesn't support true intersection. This uses inclusion-exclusion principle:
-        |A ∩ B| = |A| + |B| - |A ∪ B|
+        Uses bitwise AND on register bitmaps: result[i] = A[i] & B[i].
+        Each uint32 register is a bitmap of observed trailing-zero counts;
+        AND keeps only observations present in BOTH sets.
         
-        The result is an empty HLLSet since we cannot reconstruct actual intersection members.
-        Use cardinality() on the result to get the intersection size estimate.
+        This is a TRUE set intersection sketch, fully composable:
+          - A ∩ A = A  (idempotent)
+          - A ∩ B = B ∩ A  (commutative)
+          - (A ∩ B) ∩ C = A ∩ (B ∩ C)  (associative)
+          - A ∩ (B ∪ C) = (A ∩ B) ∪ (A ∩ C)  (distributive)
+        
+        Matches Julia HllSets.jl: z.counts[i] = x.counts[i] & y.counts[i]
         """
         if self.p_bits != other.p_bits:
             raise ValueError("Cannot intersect HLLs with different p_bits")
         
-        # Estimate intersection cardinality using inclusion-exclusion
-        # |A ∩ B| = |A| + |B| - |A ∪ B|
-        card_self = self.cardinality()
-        card_other = other.cardinality()
-        card_union = self.union(other).cardinality()
-        intersection_size = max(0, card_self + card_other - card_union)
-        
-        # Return empty HLLSet (we can't reconstruct actual elements)
-        # The user should call cardinality() to get the intersection size
-        return HLLSet(p_bits=self.p_bits)
+        result_core = self._core.intersect(other._core)
+        return HLLSet(p_bits=self.p_bits, _core=result_core)
     
     def diff(self, other: HLLSet) -> HLLSet:
         """
-        Difference with another HLLSet (returns new instance).
+        Difference A - B (returns new composable instance).
         
-        Note: HLL doesn't support true difference. This uses estimation:
-        |A - B| = |A| - |A ∩ B|
+        Uses bitwise AND-NOT on register bitmaps: result[i] = A[i] & ~B[i].
+        Keeps only the observations in A that are NOT also in B.
         
-        The result is an empty HLLSet since we cannot reconstruct actual difference members.
-        Use cardinality() on the result to get the difference size estimate.
+        Matches Julia HllSets.jl set_comp:
+            z.counts[i] = x.counts[i] & ~y.counts[i]
+        
+        Fully composable — result is a valid HLLSet.
         """
         if self.p_bits != other.p_bits:
             raise ValueError("Cannot diff HLLs with different p_bits")
         
-        # Estimate difference cardinality
-        # |A - B| = |A| - |A ∩ B|
-        card_self = self.cardinality()
-        intersection = self.intersect(other)
-        # Since intersect returns empty HLL, we need to calculate manually
-        card_other = other.cardinality()
-        card_union = self.union(other).cardinality()
-        card_intersection = max(0, card_self + card_other - card_union)
-        diff_size = max(0, card_self - card_intersection)
+        result_core = self._core.difference(other._core)
+        return HLLSet(p_bits=self.p_bits, _core=result_core)
+    
+    def symmetric_difference(self, other: HLLSet) -> HLLSet:
+        """
+        Symmetric difference A △ B (returns new composable instance).
         
-        # Return empty HLLSet (we can't reconstruct actual elements)
-        return HLLSet(p_bits=self.p_bits)
+        Uses bitwise XOR on register bitmaps: result[i] = A[i] ^ B[i].
+        Keeps only observations in exactly one of the two sets.
+        
+        Matches Julia HllSets.jl set_xor:
+            z.counts[i] = xor(x.counts[i], y.counts[i])
+        
+        Fully composable — result is a valid HLLSet.
+        """
+        if self.p_bits != other.p_bits:
+            raise ValueError("Cannot XOR HLLs with different p_bits")
+        
+        result_core = self._core.symmetric_difference(other._core)
+        return HLLSet(p_bits=self.p_bits, _core=result_core)
+    
+    def xor(self, other: HLLSet) -> HLLSet:
+        """Alias for symmetric_difference()."""
+        return self.symmetric_difference(other)
     
     # -------------------------------------------------------------------------
     # Queries

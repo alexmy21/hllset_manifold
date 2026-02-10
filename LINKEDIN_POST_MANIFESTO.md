@@ -22,6 +22,7 @@ Combined with **blueprints before code**, these principles let AI enforce struct
 **We ate our own dog food**: hllset_manifold was built following these principles. The results speak for themselves—rapid development with maintained integrity. Major refactorings across multiple files done systematically without breaking changes.
 
 I've written a detailed manifesto (attached) covering:
+
 - Why traditional discipline fails at AI scale
 - How IICA principles create enforceable structure  
 - Real examples from our project

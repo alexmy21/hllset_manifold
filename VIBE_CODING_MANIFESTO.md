@@ -393,6 +393,41 @@ def store_artifact(data: bytes) -> str:
 # Result: Fast development, maintained integrity
 ```
 
+## Empirical Validation: February 2026 Refactoring
+
+### The Ultimate Test
+
+**Deep refactoring of core modules—notebooks survived.**
+
+In February 2026, we performed extensive refactoring across the codebase:
+
+- Core module restructuring
+- API surface changes
+- Internal implementation overhauls
+
+**Result**: All 11+ numbered notebooks continued working with only minor exceptions.
+
+### Why It Worked
+
+| IICA Principle | How It Preserved Compatibility |
+| ---------------- | ------------------------------- |
+| **Immutability** | SHA1-addressed artifacts referenced by *content*, not by internal structure |
+| **Idempotence** | Notebooks re-run safely; same inputs → same outputs regardless of refactoring |
+| **Content Addressability** | Contracts defined by *what* data is, not *where* it lives or *how* it's implemented |
+| **Backward Compatibility** | Deprecated methods kept functional; new APIs added alongside |
+
+### The Exception That Proves the Rule
+
+One minor fix was needed: `e.edge_type` → `e.properties.get('relation')`
+
+**Root cause**: The API contract for `EdgeMetadata.properties` wasn't fully documented. The refactoring AI couldn't know that `relation` was the canonical property key.
+
+**Lesson**: IICA succeeds when contracts are explicit. Gaps in documentation = gaps in enforcement.
+
+This "failure" validates the manifesto: **structure enforced by architecture, not programmer discipline**. Where documentation was complete, refactoring succeeded automatically.
+
+---
+
 ## Success Metrics
 
 ### hllset_manifold Achieved
@@ -402,6 +437,7 @@ def store_artifact(data: bytes) -> str:
 - **6 files** refactored for API compatibility in one session
 - **8 edge creations** + 2 validation functions updated systematically
 - **Zero breaking changes** during major refactorings
+- **11+ notebooks** survived deep refactoring (February 2026)
 - **Complete documentation** coverage (DOCS/ directory)
 - **AI-driven development** with structural integrity maintained
 

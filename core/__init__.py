@@ -52,6 +52,14 @@ from .hrt import (
     Cover,
 )
 
+from .algebra import (
+    HLLCatalog,
+    RelAlgebra,
+    QueryResult,
+    ColumnProfile,
+    TableProfile,
+)
+
 __all__ = [
     # HLLSet
     'HLLSet',
@@ -79,6 +87,13 @@ __all__ = [
     'HLLSetLattice',
     'BasicHLLSet',
     'Cover',
+    
+    # Algebra
+    'HLLCatalog',
+    'RelAlgebra',
+    'QueryResult',
+    'ColumnProfile',
+    'TableProfile',
 ]
 
 __version__ = "0.2.0"

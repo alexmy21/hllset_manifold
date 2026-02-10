@@ -10,6 +10,7 @@ __pycache__/
 
 
 # Distribution / packaging
+data/*
 .manifold_storage/*
 api_key.txt
 .Python
