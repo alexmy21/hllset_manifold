@@ -1,0 +1,9 @@
+Great! Now it works.
+We are back to demo_analyst_workflow.ipynb. I want make demo more realistic with real data. I have about 200 csv files with different data, my plan is:
+1. Create new duckdb file to hold these csv files - one table for each file. For this create cvs2db conversion util, run it once.
+2. Develop support for ingesting tabular data from data base. My proposal is to ingest data from db tables column by column. The rational for this design: columnar presentation of DB data with HLLSets (one HLLSet for each column) is very compact - thousands columns vs millions and billions of rows; user never works with whole table always with limited result of SQL query, we can keep retrieved row as collection of row HLLSets; we can always restore row data from the matrix created from column and row HLLSets cell in this matrix is the intersection of row and column HLLSets, it's also HLLSet, so, it could be disambiguated to original tokens.
+3. Ingestion should complete 3 tasks:
+3.1. Ingest column data and create data hierarchy (HLLSet for DB, HLLSets for each table, HLLSets for each column in each table) 
+3.2. Create matadata hierarchy. Here we have 2 choices: continue to use HLLSet to present mata information (like HLLSet for DN metadata; HLLSets for table's metadata and so on), or make exception and use raw metadata but keep SHA1 ID as identifier
+3.3. Map data to metadata. Explicite entanglement at the time of ingestion. By the way we can consider this pattern in other ingestion scenarios as well.
+Before moving forward I would like to know your opinion about this proposal

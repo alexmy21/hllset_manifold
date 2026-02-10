@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d9" for="edge" attr.name="value" attr.type="long" />
+  <key id="d8" for="edge" attr.name="weight" attr.type="double" />
+  <key id="d7" for="edge" attr.name="type" attr.type="string" />
+  <key id="d6" for="edge" attr.name="target" attr.type="string" />
+  <key id="d5" for="edge" attr.name="source" attr.type="string" />
+  <key id="d4" for="node" attr.name="token" attr.type="string" />
+  <key id="d3" for="node" attr.name="index" attr.type="long" />
+  <key id="d2" for="node" attr.name="label" attr.type="string" />
+  <key id="d1" for="node" attr.name="type" attr.type="string" />
+  <key id="d0" for="node" attr.name="id" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="token_0_Alice">
+      <data key="d0">token_0_Alice</data>
+      <data key="d1">token</data>
+      <data key="d2">Alice</data>
+      <data key="d3">0</data>
+      <data key="d4">Alice</data>
+    </node>
+    <node id="token_1_Bob">
+      <data key="d0">token_1_Bob</data>
+      <data key="d1">token</data>
+      <data key="d2">Bob</data>
+      <data key="d3">1</data>
+      <data key="d4">Bob</data>
+    </node>
+    <node id="token_2_Carol">
+      <data key="d0">token_2_Carol</data>
+      <data key="d1">token</data>
+      <data key="d2">Carol</data>
+      <data key="d3">2</data>
+      <data key="d4">Carol</data>
+    </node>
+    <node id="token_3_Dave">
+      <data key="d0">token_3_Dave</data>
+      <data key="d1">token</data>
+      <data key="d2">Dave</data>
+      <data key="d3">3</data>
+      <data key="d4">Dave</data>
+    </node>
+    <edge source="token_0_Alice" target="token_1_Bob">
+      <data key="d5">token_0_Alice</data>
+      <data key="d6">token_1_Bob</data>
+      <data key="d7">adjacent</data>
+      <data key="d8">1.0</data>
+      <data key="d9">1</data>
+    </edge>
+    <edge source="token_0_Alice" target="token_2_Carol">
+      <data key="d5">token_0_Alice</data>
+      <data key="d6">token_2_Carol</data>
+      <data key="d7">adjacent</data>
+      <data key="d8">1.0</data>
+      <data key="d9">1</data>
+    </edge>
+    <edge source="token_1_Bob" target="token_3_Dave">
+      <data key="d5">token_1_Bob</data>
+      <data key="d6">token_3_Dave</data>
+      <data key="d7">adjacent</data>
+      <data key="d8">1.0</data>
+      <data key="d9">1</data>
+    </edge>
+    <edge source="token_2_Carol" target="token_3_Dave">
+      <data key="d5">token_2_Carol</data>
+      <data key="d6">token_3_Dave</data>
+      <data key="d7">adjacent</data>
+      <data key="d8">1.0</data>
+      <data key="d9">1</data>
+    </edge>
+    <edge source="token_3_Dave" target="token_0_Alice">
+      <data key="d5">token_3_Dave</data>
+      <data key="d6">token_0_Alice</data>
+      <data key="d7">adjacent</data>
+      <data key="d8">1.0</data>
+      <data key="d9">1</data>
+    </edge>
+  </graph>
+</graphml>

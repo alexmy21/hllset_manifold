@@ -6,8 +6,12 @@ __pycache__/
 # C extensions
 *.so
 *.json
+*.duckdb
+
 
 # Distribution / packaging
+.manifold_storage/*
+api_key.txt
 .Python
 build/
 develop-eggs/

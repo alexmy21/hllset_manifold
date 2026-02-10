@@ -241,12 +241,35 @@ python setup.py build_ext --inplace
 
 Check out the interactive notebooks:
 
-1. **[demo_analyst_workflow.ipynb](demo_analyst_workflow.ipynb)** ⭐ - Complete business analyst workflow with hybrid AI
-2. **[demo_unified_storage.ipynb](demo_unified_storage.ipynb)** - Unified storage with multi-perceptron architecture
-3. [10_lattice_evolution.ipynb](10_lattice_evolution.ipynb) - Lattice evolution and projection
-4. [01_quick_start.ipynb](01_quick_start.ipynb) - HLLSet basics
-5. [03_adjacency_matrix.ipynb](03_adjacency_matrix.ipynb) - Adjacency matrices
-6. [04_kernel_entanglement.ipynb](04_kernel_entanglement.ipynb) - Kernel operations
+1. **[demo_analyst_workflow.ipynb](demo_analyst_workflow.ipynb)** ⭐ - Complete business analyst workflow with hybrid AI (mockup)
+2. **[workbook_db_ingestion.ipynb](workbook_db_ingestion.ipynb)** 🔥 - Real-world database ingestion with 200+ CSV files
+3. **[demo_unified_storage.ipynb](demo_unified_storage.ipynb)** - Unified storage with multi-perceptron architecture
+4. [10_lattice_evolution.ipynb](10_lattice_evolution.ipynb) - Lattice evolution and projection
+5. [01_quick_start.ipynb](01_quick_start.ipynb) - HLLSet basics
+6. [03_adjacency_matrix.ipynb](03_adjacency_matrix.ipynb) - Adjacency matrices
+7. [04_kernel_entanglement.ipynb](04_kernel_entanglement.ipynb) - Kernel operations
+
+### Real-World Database Ingestion
+
+New: **[workbook_db_ingestion.ipynb](workbook_db_ingestion.ipynb)** demonstrates columnar ingestion of real CSV data:
+
+- Convert 200+ CSV files → DuckDB database
+- Ingest column-by-column into HLLSets (thousands of columns vs billions of rows)
+- Create data + metadata hierarchies with explicit entanglement
+- Semantic search for columns (find by meaning, not just name)
+- Foreign key detection via HLLSet similarity
+- Query planning with cardinality estimation
+
+**Quick start**:
+```bash
+# 1. Convert your CSVs to DuckDB
+python tools/csv2db.py /path/to/csvs ./data/business.duckdb
+
+# 2. Open workbook_db_ingestion.ipynb and run cells
+# 3. Query your data semantically
+```
+
+See [QUICKSTART_COLUMNAR.md](QUICKSTART_COLUMNAR.md) for details.
 
 ### Minimal Example
 

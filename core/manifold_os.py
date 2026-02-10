@@ -949,12 +949,14 @@ class Perceptron:
     absorption_count: int = 0
     last_absorption: Optional[float] = None
     
-    def absorb(self, data: Set[str], kernel: Kernel, p_bits: int = 10) -> HLLSet:
+    def absorb(self, data: Set[str], kernel: Kernel) -> HLLSet:
         """
         Absorb data from external reality into HLLSet.
         Uses kernel for transformation.
+        
+        Note: p_bits is determined by kernel configuration, not passed here.
         """
-        hllset = kernel.absorb(data, p_bits=p_bits)
+        hllset = kernel.absorb(data)
         self.absorption_count += 1
         self.last_absorption = time.time()
         return hllset
@@ -1131,6 +1133,120 @@ class PersistentStore:
     def get_hrt(self, hrt_hash: str) -> Optional[HRT]:
         """Get HRT by hash."""
         return self.hrts.get(hrt_hash)
+    
+    def store_artifact(self, data: bytes, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Store arbitrary artifact (bytes) with optional metadata.
+        Returns SHA1 hash as artifact ID.
+        
+        Args:
+            data: Raw bytes to store
+            metadata: Optional metadata dictionary
+            
+        Returns:
+            Artifact ID (SHA1 hash)
+        """
+        # Compute SHA1 hash as ID
+        artifact_id = hashlib.sha1(data).hexdigest()
+        
+        # Store in persistent storage
+        artifact_path = self.storage_path / 'artifacts' / artifact_id[:2] / artifact_id
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(artifact_path, 'wb') as f:
+            f.write(data)
+        
+        # Store metadata if provided
+        if metadata:
+            meta_path = self.storage_path / 'artifacts' / artifact_id[:2] / f"{artifact_id}.meta.json"
+            with open(meta_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+        
+        return artifact_id
+    
+    def retrieve_artifact(self, artifact_id: str) -> bytes:
+        """
+        Retrieve artifact by ID.
+        
+        Args:
+            artifact_id: SHA1 hash of artifact
+            
+        Returns:
+            Raw bytes
+            
+        Raises:
+            FileNotFoundError: If artifact not found
+        """
+        artifact_path = self.storage_path / 'artifacts' / artifact_id[:2] / artifact_id
+        
+        if not artifact_path.exists():
+            raise FileNotFoundError(f"Artifact not found: {artifact_id}")
+        
+        with open(artifact_path, 'rb') as f:
+            return f.read()
+    
+    def create_entanglement(self, source_id: str, target_id: str, strength: float = 1.0):
+        """
+        Create entanglement relationship between two artifacts.
+        
+        Stores entanglement metadata for tracking relationships between
+        data and metadata, or between related artifacts.
+        
+        Args:
+            source_id: Source artifact ID
+            target_id: Target artifact ID  
+            strength: Entanglement strength (0.0 to 1.0)
+        """
+        # Store entanglement in manifest
+        entanglement_path = self.storage_path / 'entanglements'
+        entanglement_path.mkdir(parents=True, exist_ok=True)
+        
+        entanglement_file = entanglement_path / f"{source_id}.json"
+        
+        # Load existing entanglements or create new
+        if entanglement_file.exists():
+            with open(entanglement_file, 'r') as f:
+                entanglements = json.load(f)
+        else:
+            entanglements = []
+        
+        # Add new entanglement
+        entanglements.append({
+            'target_id': target_id,
+            'strength': strength,
+            'timestamp': time.time()
+        })
+        
+        # Save
+        with open(entanglement_file, 'w') as f:
+            json.dump(entanglements, f, indent=2)
+    
+    def get_entanglements(self, artifact_id: str) -> Dict[str, float]:
+        """
+        Get all entanglements for an artifact.
+        
+        Args:
+            artifact_id: Artifact ID to get entanglements for
+            
+        Returns:
+            Dictionary mapping target_id -> strength
+        """
+        entanglement_path = self.storage_path / 'entanglements'
+        entanglement_file = entanglement_path / f"{artifact_id}.json"
+        
+        if not entanglement_file.exists():
+            return {}
+        
+        # Load entanglements
+        with open(entanglement_file, 'r') as f:
+            entanglements = json.load(f)
+        
+        # Convert to dict (most recent strength for each target)
+        result = {}
+        for ent in entanglements:
+            result[ent['target_id']] = ent['strength']
+        
+        return result
     
     def _persist_state(self, state: OSState):
         """Persist state to disk."""
@@ -1406,6 +1522,62 @@ class ManifoldOS:
         # Statistics
         self.start_time = time.time()
         self.processing_cycles = 0
+    
+    # -------------------------------------------------------------------------
+    # Artifact Storage Delegation (delegates to PersistentStore)
+    # -------------------------------------------------------------------------
+    
+    def store_artifact(self, data: bytes, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Store arbitrary artifact (bytes) with optional metadata.
+        Delegates to PersistentStore.
+        
+        Args:
+            data: Raw bytes to store
+            metadata: Optional metadata dictionary
+            
+        Returns:
+            Artifact ID (SHA1 hash)
+        """
+        return self.store.store_artifact(data, metadata)
+    
+    def retrieve_artifact(self, artifact_id: str) -> bytes:
+        """
+        Retrieve artifact by ID.
+        Delegates to PersistentStore.
+        
+        Args:
+            artifact_id: SHA1 hash of artifact
+            
+        Returns:
+            Raw bytes
+        """
+        return self.store.retrieve_artifact(artifact_id)
+    
+    def create_entanglement(self, source_id: str, target_id: str, strength: float = 1.0):
+        """
+        Create entanglement relationship between two artifacts.
+        Delegates to PersistentStore.
+        
+        Args:
+            source_id: Source artifact ID
+            target_id: Target artifact ID  
+            strength: Entanglement strength (0.0 to 1.0)
+        """
+        return self.store.create_entanglement(source_id, target_id, strength)
+    
+    def get_entanglements(self, artifact_id: str) -> Dict[str, float]:
+        """
+        Get all entanglements for an artifact.
+        Delegates to PersistentStore.
+        
+        Args:
+            artifact_id: Artifact ID to get entanglements for
+            
+        Returns:
+            Dictionary mapping target_id -> strength
+        """
+        return self.store.get_entanglements(artifact_id)
     
     def _setup_storage_extension(self, storage_path, lut_db_path, extensions):
         """
@@ -1881,8 +2053,8 @@ class ManifoldOS:
             if perceptron and data:
                 hllset = perceptron.absorb(data, self.kernel)
                 ingested.append(hllset)
-                # Store in kernel CAS
-                self.kernel.store(hllset)
+                # Store in content store
+                self.store.store_hllset(hllset)
         
         # 2. Process through pipeline
         processed = ingested.copy()
@@ -1891,23 +2063,10 @@ class ManifoldOS:
                 result = stage.process(processed, self.kernel)
                 if result:
                     # Store intermediate result
-                    self.kernel.store(result)
+                    self.store.store_hllset(result)
                     processed = [result]
         
-        # 3. Create HRT from perceptron data
-        new_hrt = self.hrt_factory.create_from_perceptrons(perceptron_data, self.kernel)
-        
-        # 4. Merge HRT with current HRT (if exists)
-        if self.current_hrt:
-            merged_hrt = new_hrt.merge(self.current_hrt, self.kernel)
-            self.current_hrt = merged_hrt
-        else:
-            self.current_hrt = new_hrt
-        
-        # Store HRT
-        hrt_hash = self.store.store_hrt(self.current_hrt)
-        
-        # 5. Merge with current state (root HLLSet)
+        # 3. Merge with current state (root HLLSet)
         if self.current_state:
             current_root = self.store.get_hllset(self.current_state.root_hllset_hash)
             if current_root and processed:
@@ -1924,11 +2083,12 @@ class ManifoldOS:
         # Store new root
         self.store.store_hllset(new_root)
         
-        # 6. Create new state (including HRT)
+        # 4. Create new state
+        # Note: HRT creation happens via separate evolution system if needed
         new_state = OSState(
             state_hash="",
             root_hllset_hash=new_root.name,
-            hrt_hash=hrt_hash,
+            hrt_hash=self.current_hrt.name if self.current_hrt else "",
             perceptron_states={
                 p.perceptron_id: {
                     'absorption_count': p.absorption_count,

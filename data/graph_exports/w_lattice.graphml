@@ -1,0 +1,59 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d5" for="node" attr.name="sha1" attr.type="string" />
+  <key id="d4" for="node" attr.name="cardinality" attr.type="double" />
+  <key id="d3" for="node" attr.name="index" attr.type="long" />
+  <key id="d2" for="node" attr.name="label" attr.type="string" />
+  <key id="d1" for="node" attr.name="type" attr.type="string" />
+  <key id="d0" for="node" attr.name="id" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="row_0">
+      <data key="d0">row_0</data>
+      <data key="d1">row_hllset</data>
+      <data key="d2">Row 0</data>
+      <data key="d3">0</data>
+      <data key="d4">4.007832904843586</data>
+      <data key="d5">3568478f</data>
+    </node>
+    <node id="row_1">
+      <data key="d0">row_1</data>
+      <data key="d1">row_hllset</data>
+      <data key="d2">Row 1</data>
+      <data key="d3">1</data>
+      <data key="d4">4.007832904843586</data>
+      <data key="d5">374e28df</data>
+    </node>
+    <node id="row_2">
+      <data key="d0">row_2</data>
+      <data key="d1">row_hllset</data>
+      <data key="d2">Row 2</data>
+      <data key="d3">2</data>
+      <data key="d4">4.007832904843586</data>
+      <data key="d5">a0ab44bb</data>
+    </node>
+    <node id="col_0">
+      <data key="d0">col_0</data>
+      <data key="d1">col_hllset</data>
+      <data key="d2">Col 0</data>
+      <data key="d3">0</data>
+      <data key="d4">2.001955671862574</data>
+      <data key="d5">5a8d52bd</data>
+    </node>
+    <node id="col_1">
+      <data key="d0">col_1</data>
+      <data key="d1">col_hllset</data>
+      <data key="d2">Col 1</data>
+      <data key="d3">1</data>
+      <data key="d4">3.004403133222472</data>
+      <data key="d5">65d6f44a</data>
+    </node>
+    <node id="col_2">
+      <data key="d0">col_2</data>
+      <data key="d1">col_hllset</data>
+      <data key="d2">Col 2</data>
+      <data key="d3">2</data>
+      <data key="d4">2.001955671862574</data>
+      <data key="d5">2b288dca</data>
+    </node>
+  </graph>
+</graphml>
