@@ -105,7 +105,7 @@ Open [demo_analyst_workflow.ipynb](demo_analyst_workflow.ipynb) and run cells se
 
 ## File Structure
 
-```
+```text
 hllset_manifold/
 ├── tools/
 │   ├── csv2db.py              # CSV → DuckDB converter
@@ -138,6 +138,7 @@ hllset_manifold/
 ## Performance Expectations
 
 **200 CSV files** (typical business scenario):
+
 - CSV → DuckDB: 1-5 minutes
 - DuckDB → HLLSets: 5-15 minutes
 - Storage: ~200-500 MB for all HLLSets
