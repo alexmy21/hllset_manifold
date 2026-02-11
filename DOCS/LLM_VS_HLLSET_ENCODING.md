@@ -42,7 +42,9 @@ Where:
 
 In the HLLSet architecture, tokens are encoded via cryptographic hashing:
 
-$$\text{HLL}(t) = \text{register\_update}(\text{hash}(t))$$
+```math
+\text{HLL}(t) = \text{register\_update}(\text{hash}(t))
+```
 
 Where:
 
