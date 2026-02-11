@@ -107,14 +107,26 @@ Both create **fuzzy semantic neighborhoods**:
 Transformers lack inherent sequence awareness. Position is injected via additive encoding:
 
 **Sinusoidal (Vaswani et al., 2017)**:
-$$PE_{(pos, 2i)} = \sin(pos / 10000^{2i/d})$$
-$$PE_{(pos, 2i+1)} = \cos(pos / 10000^{2i/d})$$
+
+```math
+PE_{(pos, 2i)} = \sin(pos / 10000^{2i/d})
+```
+
+```math
+PE_{(pos, 2i+1)} = \cos(pos / 10000^{2i/d})
+```
 
 **Learned (GPT-style)**:
-$$\mathbf{p}_{pos} = \mathbf{W}_P[pos]$$
+
+```math
+\mathbf{p}_{pos} = \mathbf{W}_P[pos]
+```
 
 **Rotary (RoPE)**:
-$$\mathbf{q}'_m = \mathbf{R}_m \mathbf{q}_m, \quad \mathbf{k}'_n = \mathbf{R}_n \mathbf{k}_n$$
+
+```math
+\mathbf{q}'_m = \mathbf{R}_m \mathbf{q}_m, \quad \mathbf{k}'_n = \mathbf{R}_n \mathbf{k}_n
+```
 
 **Properties**:
 
@@ -140,10 +152,16 @@ AM Lattice (Adjacency Matrix)          W Lattice (BSS Similarity)
 ```
 
 **AM Lattice**: Partial order over tokens via co-occurrence
-$$t_1 \leq_{AM} t_2 \iff \text{tokens co-occur in context}$$
+
+```math
+t_1 \leq_{AM} t_2 \iff \text{tokens co-occur in context}
+```
 
 **W Lattice**: Partial order over HLLSets via Bell State Similarity (BSS)
-$$S_1 \leq_W S_2 \iff BSS(S_1, S_2) > \theta$$
+
+```math
+S_1 \leq_W S_2 \iff BSS(S_1, S_2) > \theta
+```
 
 **Properties**:
 
@@ -187,10 +205,16 @@ The HLLSet position is *meaning itself*, not a coordinate for finding meaning.
 LLMs learn by minimizing prediction error:
 
 **Autoregressive objective (GPT-style)**:
-$$\mathcal{L} = -\sum_{t=1}^{T} \log P(x_t | x_{<t}; \theta)$$
+
+```math
+\mathcal{L} = -\sum_{t=1}^{T} \log P(x_t | x_{<t}; \theta)
+```
 
 **Masked language modeling (BERT-style)**:
-$$\mathcal{L} = -\sum_{t \in \text{masked}} \log P(x_t | x_{\backslash t}; \theta)$$
+
+```math
+\mathcal{L} = -\sum_{t \in \text{masked}} \log P(x_t | x_{\backslash t}; \theta)
+```
 
 **Properties**:
 
@@ -204,7 +228,10 @@ $$\mathcal{L} = -\sum_{t \in \text{masked}} \log P(x_t | x_{\backslash t}; \thet
 The HLLSet Manifold doesn't "learn" in the optimization sense. Instead, it **accumulates structure that satisfies conservation constraints**.
 
 **Noether's Theorem** (1918):
-$$\text{Continuous symmetry} \Rightarrow \text{Conservation law}$$
+
+```math
+\text{Continuous symmetry} \Rightarrow \text{Conservation law}
+```
 
 Physical examples:
 
@@ -265,7 +292,9 @@ HLLSet:  M_{t+1} = M_t ∪ {new nodes, edges satisfying IICA}  [crystallization]
 
 In quantum mechanics, entangled particles share correlated states:
 
-$$|\Psi\rangle = \frac{1}{\sqrt{2}}(|00\rangle + |11\rangle)$$
+```math
+|\Psi\rangle = \frac{1}{\sqrt{2}}(|00\rangle + |11\rangle)
+```
 
 Measurement on one particle instantly determines the other's state, regardless of distance. The particles have no independent identity—only their relationship is defined.
 
@@ -350,14 +379,15 @@ Entanglement is not between tokens or even between sets—it is a **morphism bet
 ```text
 Lattice A (English corpus)          Lattice B (Mandarin corpus)
     [bit patterns]                      [bit patterns]
-         ↓                                    ↓
+         ↓                                     ↓
     Partial order (⊇)                   Partial order (⊇)
-         ↓                                    ↓
+         ↓                                     ↓
          └───── Morphism φ: A → B ─────────────┘
                 (structure-preserving map)
 ```
 
 The morphism φ preserves lattice structure:
+
 - If $S_1 \subseteq S_2$ in A, then $φ(S_1) \subseteq φ(S_2)$ in B
 - Join/meet operations are preserved
 
@@ -383,7 +413,9 @@ This enables analysis across systems that share zero vocabulary.
 
 Any fixed-size binary vector matching HLLSet register dimensions **could** represent an HLLSet:
 
-$$\mathcal{V} = \{0, 1\}^{r \times b}$$
+```math
+\mathcal{V} = \{0, 1\}^{r \times b}
+```
 
 Where $r$ = number of registers, $b$ = bits per register.
 
@@ -408,7 +440,7 @@ The vector space perspective opens profound questions:
 **Key results from the theoretical analysis**:
 
 | Concept | Result |
-|---------|--------|
+| --------- | -------- |
 | **Completeness** | Every possible pattern has a reality that produces it |
 | **Overlap** | Realities share structures despite different tokens |
 | **Entanglement** | Overlap is measurable when both realities are accessible |
@@ -441,10 +473,16 @@ This framework explains how:
 ### 4.7 The Deeper Parallel
 
 LLM attention discovers relationships dynamically:
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+
+```math
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+```
 
 HLLSet entanglement records relationships permanently:
-$$E_{ij} = \text{SHA1}(S_i, S_j, \text{strength})$$
+
+```math
+E_{ij} = \text{SHA1}(S_i, S_j, \text{strength})
+```
 
 The attention mechanism is **ephemeral**—it exists only during computation.
 The entanglement is **crystallized**—it persists as structure.
@@ -457,7 +495,9 @@ The entanglement is **crystallized**—it persists as structure.
 
 Bell State Similarity in the W lattice is **directed**:
 
-$$BSS(S_1 \to S_2) \neq BSS(S_2 \to S_1)$$
+```math
+BSS(S_1 \to S_2) \neq BSS(S_2 \to S_1)
+```
 
 This captures **containment relationships**:
 
@@ -480,7 +520,10 @@ This partial order is not available in symmetric similarity measures (cosine sim
 ### 5.3 Comparison to Causal Attention
 
 LLM causal attention masks future tokens:
-$$\text{Attention}_{ij} = 0 \text{ if } j > i$$
+
+```math
+\text{Attention}_{ij} = 0 \text{ if } j > i
+```
 
 This is a **temporal** causality (can't attend to future).
 
@@ -593,7 +636,7 @@ Both systems are fuzzy—this is a feature, not a bug. The difference is **expla
 | **Fuzzy?** | Yes | Yes |
 | **Traceable?** | No | Yes |
 
->**The profound implication**: 
+>**The profound implication**:
 >
 > *Both LLMs and HLLSet manifolds can dream. But only HLLSet can explain the dream—trace every generated output back to its source tokens. The fuzziness that enables creativity is preserved; the opacity that blocks accountability is removed.*
 

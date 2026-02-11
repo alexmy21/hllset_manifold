@@ -35,7 +35,9 @@ The HLLSet Manifold is built on a proper category **HLL** defined as follows:
 **Definition (HLLSet Object)**:
 An HLLSet $A$ is a 4-tuple:
 
-$$A = (H_A, \phi_A, \tau_A, \rho_A)$$
+```math
+A = (H_A, \phi_A, \tau_A, \rho_A)
+```
 
 Where:
 
@@ -57,8 +59,13 @@ Where:
 
 Morphisms in Category HLL are defined by **Bell State Similarity**:
 
-$$BSS_\tau(A \to B) = \frac{|A \cap B|}{|B|}$$
-$$BSS_\rho(A \to B) = \frac{|A \setminus B|}{|B|}$$
+```math
+BSS_\tau(A \to B) = \frac{|A \cap B|}{|B|}
+```
+
+```math
+BSS_\rho(A \to B) = \frac{|A \setminus B|}{|B|}
+```
 
 Where:
 
@@ -66,14 +73,20 @@ Where:
 - $BSS_\rho$ measures **exclusion** (how much of A lies outside B)
 
 **Morphism existence**: $f: A \to B$ exists iff:
-$$BSS_\tau(A \to B) \geq \tau_A \quad \text{and} \quad BSS_\rho(A \to B) \leq \rho_B$$
+
+```math
+BSS_\tau(A \to B) \geq \tau_A \quad \text{and} \quad BSS_\rho(A \to B) \leq \rho_B
+```
 
 ### 1.3 Karoubi Completion and Idempotence
 
 A key theoretical result from the paper:
 
 **Theorem (Karoubi Equivalence)**:
-$$\mathbf{HLL} \simeq \text{Karoubi}(\mathbf{IdempotentHashes})$$
+
+```math
+\mathbf{HLL} \simeq \text{Karoubi}(\mathbf{IdempotentHashes})
+```
 
 The HLL category is equivalent to the Karoubi completion of idempotent hash functions.
 
@@ -121,7 +134,9 @@ These are not merely alternative notations—they reveal **different structures*
 
 There exists a morphism from the vector space to the set space:
 
-$$\phi: \mathcal{V} \to \mathcal{P}(\mathcal{S})$$
+```math
+\phi: \mathcal{V} \to \mathcal{P}(\mathcal{S})
+```
 
 Where:
 
@@ -144,7 +159,9 @@ The vector space $\mathcal{V}$ appears "flat"—just a collection of binary vect
 
 The set space $\mathcal{P}(\mathcal{S})$ reveals **partial order structure**:
 
-$$S_1 \leq S_2 \iff S_1 \subseteq S_2$$
+```math
+S_1 \leq S_2 \iff S_1 \subseteq S_2
+```
 
 This partial order is **hidden** in the vector representation but becomes **explicit** through the morphism φ.
 
@@ -255,7 +272,9 @@ The vector space contains all of these—the morphism φ reveals them; projectio
 
 Any HLLSet can be represented as a fixed-size binary vector:
 
-$$\mathcal{V} = \{0, 1\}^{r \times b}$$
+```math
+\mathcal{V} = \{0, 1\}^{r \times b}
+```
 
 Where:
 
@@ -296,7 +315,9 @@ This is the mathematical foundation for generative capacity: any pattern is real
 
 A **reality** $R$ is a subset of $\mathcal{V}$:
 
-$$R \subseteq \mathcal{V}$$
+```math
+R \subseteq \mathcal{V}
+```
 
 The reality is defined by which vectors are "realized" (produced by actual tokens in that context).
 
@@ -333,7 +354,9 @@ The overlap of vectors is **necessary but not sufficient** for meaningful compar
 
 For any vector $v \in \mathcal{V}$, define the **reality class**:
 
-$$[v] = \{R : R \text{ produces } v\}$$
+```math
+[v] = \{R : R \text{ produces } v\}
+```
 
 All realities in $[v]$ share something structural—they generate the same pattern despite having completely different tokens.
 
@@ -411,7 +434,7 @@ This means:
 Reality R₁:                    Reality R₂:
     v₁                            v₁₀₀
    / \                            / \
-  v₂  v₃         ≈               v₁₀₁  v₁₀₂
+  v₂  v₃         ≈             v₁₀₁  v₁₀₂
    \ /                            \ /
     v₄                            v₁₀₃
 
@@ -422,7 +445,9 @@ Different vectors, SAME STRUCTURE = Entangled
 
 The **entanglement strength** between realities is measured by the size of maximal isomorphic sublattices:
 
-$$E(R_1, R_2) = \frac{|\text{maximal isomorphic sublattice}|}{\min(|R_1|, |R_2|)}$$
+```math
+E(R_1, R_2) = \frac{|\text{maximal isomorphic sublattice}|}{\min(|R_1|, |R_2|)}
+```
 
 This captures:
 
