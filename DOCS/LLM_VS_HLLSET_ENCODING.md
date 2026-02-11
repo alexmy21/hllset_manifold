@@ -209,7 +209,7 @@ LLMs learn by minimizing prediction error:
 **Autoregressive objective (GPT-style)**:
 
 ```math
-\mathcal{L} = -\sum_{t=1}^{T} \log P(x_t | x_{<t}; \theta)
+\mathcal{L} = -\sum_{t=1}^{T} \log P(x_t | x_{\lt t}; \theta)
 ```
 
 **Masked language modeling (BERT-style)**:
