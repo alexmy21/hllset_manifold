@@ -1,7 +1,7 @@
 # Vibe Coding Manifesto
 
-**AI-Driven Development with Structural Integrity**
-
+>**AI-Driven Development with Structural Integrity**
+>
 > *"Vibe coding is a thing now, you kind of describe to an LLM the vibe of what you want, and it fills in all the details."*  
 > — Andrej Karpathy, [January 2025](https://x.com/karpathy/status/1886192184808149383)
 
@@ -186,7 +186,7 @@ hll_bytes = hll.dump_roaring()
 3. **Validation against docs** (e.g., consistency checks in `graph_visualizer.py`)
 4. **Continuous refactoring** (e.g., edge_type removal aligned with lattice theory)
 
-**Example: Graph Refactoring**
+#### **Example: Graph Refactoring**
 
 **Blueprint**: [DOCS/AM_ARCHITECTURE.md](DOCS/AM_ARCHITECTURE.md) - Lattices define edges via partial order (⊇)
 
