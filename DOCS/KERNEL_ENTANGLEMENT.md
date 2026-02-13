@@ -1,22 +1,50 @@
-# Enhanced Kernel: Entanglement-Aware Transformation Engine
+# Enhanced Kernel: Two-Layer Architecture
 
 ## Overview
 
-The enhanced `kernel.py` now supports **three levels of operations**, implementing the theoretical framework described in ENTANGLEMENT_SINGULARITY.md:
+The enhanced `kernel.py` implements a **two-layer architecture** that cleanly separates register operations from structural entanglement.
 
-### Level 1: Basic Morphisms (Set Operations)
+## ⚠️ IMPORTANT: HLLSets are NOT sets containing tokens
 
-Pure stateless transformations on HLLSets
+HLLSets are probabilistic register structures ("anti-sets") that:
 
-### Level 2: Entanglement Operations (ICASRA-Inspired)
+- **ABSORB** tokens (hash them into registers)
+- **DO NOT STORE** tokens (only register states remain)
+- **BEHAVE LIKE** sets (union, intersection, cardinality estimation)
+- **ARE NOT** sets (no element retrieval, no membership test)
 
-**ICASRA** (Immutable Content-Addressable Self-Reproducing Automata)
+The registers encode a probabilistic fingerprint of what was absorbed,
+but the original tokens are **irretrievably lost**.
 
-Detection and validation of structural isomorphisms between HLLSets
+## ⚠️ CRITICAL DISTINCTION: HLLSets vs Lattices
 
-### Level 3: Network Operations (Multi-Installation)
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    TWO-LAYER ARCHITECTURE                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  LAYER 1: HLLSet (Register Layer)                                           │
+│  ├─ Compares: Register states, estimated cardinalities                      │
+│  ├─ Methods: find_isomorphism(), similarity()                               │
+│  ├─ Returns: Morphism (register-level comparison)                           │
+│  └─ NOT true entanglement - just register similarity!                       │
+│                                                                             │
+│  LAYER 2: Lattice (Structure Layer) ← TRUE ENTANGLEMENT                     │
+│  ├─ Compares: Degree distributions, graph topology                          │
+│  ├─ Methods: find_lattice_isomorphism(), validate_lattice_entanglement()    │
+│  ├─ Returns: LatticeMorphism (structure-level comparison)                   │
+│  ├─ Individual HLLSets are IRRELEVANT - only STRUCTURE matters              │
+│  └─ Two lattices can be entangled even from completely different inputs!    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-3D tensor construction, coherence measurement, and singularity detection
+| Concept | Layer | Compares | Method |
+| ------------------ | ------------ | ----------------- | -------------------------------- |
+| Similarity | HLLSet | Registers | `find_isomorphism()` |
+| Cardinality | HLLSet | Estimated count | `cardinality()` |
+| **ENTANGLEMENT** | **Lattice** | **Structure** | `find_lattice_isomorphism()` |
+| Structural Match | Lattice | Topology | `validate_lattice_entanglement()` |
 
 ## Architecture
 
@@ -25,16 +53,17 @@ Detection and validation of structural isomorphisms between HLLSets
 │                    KERNEL (Stateless)                       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Level 1: Basic Morphisms                                   │
-│  ├─ absorb: Set[str] → HLLSet                               │
+│  Level 1: Basic Operations (HLLSet/Register Layer)          │
+│  ├─ absorb: tokens → HLLSet (tokens hashed, then lost)      │
 │  ├─ union, intersect, diff: HLLSet × HLLSet → HLLSet        │
-│  └─ add: HLLSet × tokens → HLLSet                           │
+│  ├─ add: HLLSet × tokens → HLLSet                           │
+│  └─ find_isomorphism: HLLSet × HLLSet → Morphism            │
 │                                                             │
-│  Level 2: Entanglement (ICASRA)                             │
-│  ├─ find_isomorphism: φ: A → B (ε-isomorphic)               │
-│  ├─ validate_entanglement: Check mutual entanglement        │
-│  ├─ reproduce: B (copier) - create child with mutation      │
-│  └─ commit: A (constructor) - stabilize candidate           │
+│  Level 2: Entanglement (Lattice/Structure Layer)            │
+│  ├─ find_lattice_isomorphism: Lattice × Lattice → LMorphism │
+│  ├─ validate_lattice_entanglement: [Lattice] → (bool, coh)  │
+│  ├─ reproduce: HLLSet → HLLSet (with mutation)              │
+│  └─ commit: HLLSet → HLLSet (stabilize)                     │
 │                                                             │
 │  Level 3: Network Operations                                │
 │  ├─ build_tensor: [HLLSet] → 3D Tensor                      │
@@ -46,38 +75,59 @@ Detection and validation of structural isomorphisms between HLLSets
 
 ## Key Concepts
 
-### 1. Morphism (ε-isomorphism)
+### 1. Morphism (Content-Level) - NOT True Entanglement
 
-A morphism `φ: A → B` between two HLLSets represents structural similarity:
+A `Morphism` between two HLLSets represents **content overlap**:
 
 ```python
 morph = kernel.find_isomorphism(hll_a, hll_b, epsilon=0.05)
-# Returns Morphism if |BSS(x,y) - BSS(φ(x),φ(y))| < ε
+# Returns Morphism if HLLSets have similar cardinality and content overlap
+# This is CONTENT comparison, NOT true entanglement!
 ```
 
 **Properties:**
 
 - `source_hash`: Content address of source HLLSet
 - `target_hash`: Content address of target HLLSet
-- `similarity`: Jaccard similarity score
-- `epsilon`: Tolerance for approximate isomorphism
-- `is_isomorphism`: Whether structures are ε-isomorphic
+- `similarity`: Jaccard similarity score (content overlap)
+- `epsilon`: Tolerance for approximate matching
+- `is_isomorphism`: Whether content is ε-similar
 
-### 2. Entanglement
+### 2. LatticeMorphism (Structure-Level) - TRUE Entanglement
 
-Multiple HLLSets are **entangled** when pairwise ε-isomorphisms exist between them:
+A `LatticeMorphism` between two HLLSetLattices represents **structural similarity**:
 
 ```python
-is_entangled, coherence = kernel.validate_entanglement(
-    [hll_1, hll_2, hll_3], 
+lattice_morph = kernel.find_lattice_isomorphism(lattice_a, lattice_b, epsilon=0.05)
+# Returns LatticeMorphism if STRUCTURES are similar
+# Nodes (HLLSets) are IRRELEVANT - only topology matters!
+```
+
+**Properties:**
+
+- `source_lattice_hash`: Hash of source lattice
+- `target_lattice_hash`: Hash of target lattice
+- `row_degree_correlation`: Correlation of row degree sequences
+- `col_degree_correlation`: Correlation of column degree sequences
+- `overall_structure_match`: Combined structural similarity
+- `epsilon_isomorphic_prob`: Probability of structural ε-isomorphism
+
+### 3. True Entanglement (Lattice-Level)
+
+Multiple **lattices** are entangled when their **structures** match:
+
+```python
+is_entangled, coherence = kernel.validate_lattice_entanglement(
+    [lattice_1, lattice_2, lattice_3], 
     epsilon=0.15
 )
-# Checks: pairwise morphisms, commuting diagrams, coherence > threshold
+# Checks: pairwise STRUCTURAL morphisms, degree correlations
+# Two lattices can be entangled with ZERO shared tokens!
 ```
 
 **Entanglement Criteria:**
 
-- **>90% pairs** have ε-isomorphisms
+- **>90% pairs** have structural ε-isomorphisms
 - **Coherence >50%** (average similarity)
 - Morphisms compose properly
 
@@ -154,7 +204,7 @@ print(report.coherence)  # 0.0 to 1.0
 
 As a network grows, it passes through phases:
 
-```
+```text
 Phase 0: Disordered
 ├─ Entanglement ratio: <30%
 ├─ No systematic structure

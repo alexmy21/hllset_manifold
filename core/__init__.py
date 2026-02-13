@@ -7,8 +7,34 @@ This module provides the core components of the HLLSet Manifold system:
 - kernel: Stateless transformation engine (pure morphisms)
 - hrt: Hash Relational Tensor with three-state evolution model
 
+================================================================================
+IMPORTANT: HLLSets are NOT sets containing tokens!
+================================================================================
+
+HLLSets are probabilistic register structures ("anti-sets") that:
+- ABSORB tokens (hash them into registers)
+- DO NOT STORE tokens (only register states remain)
+- BEHAVE LIKE sets (union, intersection, cardinality estimation)
+- ARE NOT sets (no element retrieval, no membership test)
+
+================================================================================
+TWO-LAYER ARCHITECTURE: HLLSets vs Lattices
+================================================================================
+
+LAYER 1: HLLSet (Register Layer)
+- Works with individual HLLSets (register arrays)
+- Compares: Register states, estimated cardinalities
+- Morphism: Register-level comparison (NOT entanglement)
+
+LAYER 2: Lattice (Structure Layer) - TRUE ENTANGLEMENT
+- Works with HLLSetLattice objects
+- Compares STRUCTURE (degree distributions, graph topology)
+- LatticeMorphism: Structure-level comparison
+- Individual HLLSets are IRRELEVANT - only topology matters
+- Two lattices can be entangled even from completely different inputs!
+
 Architecture:
-1. HLLSet: Named, immutable probabilistic set (C/Cython backend)
+1. HLLSet: Named, immutable register array (C/Cython backend)
 2. Kernel: Pure operations (absorb, union, intersection, difference)
 3. HRT: Operation data structure (AM, Lattice, Covers) - immutable
 4. OS: Reality interface (evolution orchestration, persistent storage)
@@ -39,6 +65,9 @@ from .kernel import (
     Kernel,
     Operation,
     record_operation,
+    Morphism,
+    LatticeMorphism,
+    SingularityReport,
 )
 
 from .hrt import (
@@ -77,6 +106,9 @@ __all__ = [
     'Kernel',
     'Operation',
     'record_operation',
+    'Morphism',
+    'LatticeMorphism',
+    'SingularityReport',
     
     # HRT
     'HRT',

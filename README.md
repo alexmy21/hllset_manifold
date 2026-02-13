@@ -37,7 +37,7 @@ Enterprises face a critical disconnect between **Enterprise Data (ED)** and **AI
 Current metadata tools fail AI integration:
 
 - **Data catalogs** describe schemas (column types, row counts) but miss **content relationships**
-- **Statistics** (cardinality, distributions) lose **structural patterns** 
+- **Statistics** (cardinality, distributions) lose **structural patterns**
 - **Samples** risk missing rare but critical cases
 - **Result**: AI operates blind to enterprise context, enterprises can't ground AI solutions
 
@@ -261,6 +261,7 @@ New: **[workbook_db_ingestion.ipynb](workbook_db_ingestion.ipynb)** demonstrates
 - Query planning with cardinality estimation
 
 **Quick start**:
+
 ```bash
 # 1. Convert your CSVs to DuckDB
 python tools/csv2db.py /path/to/csvs ./data/business.duckdb

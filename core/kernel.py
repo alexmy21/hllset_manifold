@@ -3,18 +3,67 @@ HLLSet Kernel: Stateless Transformation Engine (Pure Morphisms)
 
 The kernel provides pure transformation operations (morphisms) at multiple levels:
 
-**Level 1: Basic Set Operations**
-- absorb: Set[str] → HLLSet
+================================================================================
+TWO-LAYER ARCHITECTURE: HLLSets vs Lattices
+================================================================================
+
+**IMPORTANT: HLLSets are NOT sets containing tokens!**
+
+HLLSets are probabilistic register structures ("anti-sets") that:
+- ABSORB tokens (hash them into registers)
+- DO NOT STORE tokens (only register states remain)
+- BEHAVE LIKE sets (union, intersection, cardinality estimation)
+- ARE NOT sets (no element retrieval, no membership test)
+
+The registers encode a probabilistic fingerprint of what was absorbed,
+but the original tokens are irretrievably lost.
+
+================================================================================
+LAYER 1: HLLSet Operations (Register/Cardinality Layer)
+================================================================================
+- Works with individual HLLSets (register arrays)
+- Compares: Register states, estimated cardinalities, Jaccard similarity
+- find_isomorphism: Checks if two HLLSets have similar register patterns
+- This is register-level similarity, NOT true entanglement
+
+================================================================================
+LAYER 2: Lattice Operations (Structure Layer) - TRUE ENTANGLEMENT
+================================================================================
+- Works with HLLSetLattice objects (collections of HLLSets)
+- Compares STRUCTURE (degree distributions, graph topology)
+- find_lattice_isomorphism: Checks if two lattices have similar structure
+- validate_lattice_entanglement: TRUE entanglement between lattices
+- Individual HLLSets are IRRELEVANT - only the structural pattern matters
+- Two lattices can be entangled even when built from completely different inputs
+
+================================================================================
+CRITICAL DISTINCTION
+================================================================================
+
+| Concept          | Layer      | Compares        | Method                        |
+|------------------|------------|-----------------|-------------------------------|
+| Similarity       | HLLSet     | Registers       | find_isomorphism()            |
+| Cardinality      | HLLSet     | Estimated count | cardinality()                 |
+| ENTANGLEMENT     | Lattice    | Structure       | find_lattice_isomorphism()    |
+| Structural Match | Lattice    | Topology        | validate_lattice_entanglement()|
+
+================================================================================
+Level 1: Basic Operations (HLLSet/Register Layer)
+================================================================================
+- absorb: tokens → HLLSet (tokens are hashed and lost)
 - union, intersection, difference: HLLSet × HLLSet → HLLSet
 - add: HLLSet × tokens → HLLSet
+- find_isomorphism: HLLSet × HLLSet → Morphism (register similarity)
 
-**Level 2: Entanglement Operations** (ICASRA-inspired)
-- find_isomorphism: HLLSet × HLLSet → Morphism
-- validate_entanglement: [HLLSet] → bool
-- reproduce: HLLSet → HLLSet (with mutation)
-- commit: HLLSet → HLLSet (stabilization)
+================================================================================
+Level 2: Lattice Entanglement Operations (Structure Layer)
+================================================================================
+- find_lattice_isomorphism: Lattice × Lattice → LatticeMorphism
+- validate_lattice_entanglement: [Lattice] → (bool, coherence)
 
-**Level 3: Network Operations**
+================================================================================
+Level 3: Network Operations
+================================================================================
 - build_tensor: [HLLSet] → 3D Tensor
 - detect_singularity: Network → bool
 - measure_coherence: Network → float
@@ -23,13 +72,13 @@ Design Principles:
 - Stateless: No storage, no history, no CAS
 - Pure: Same input → same output (deterministic)
 - Immutable: Operations return new HLLSets
-- Content-addressed: All outputs named by content hash
+- Content-addressed: All outputs named by register hash
 - Composable: Morphisms compose naturally
-- Entanglement-aware: Supports cross-installation coherence
+- Layer-aware: Distinguishes registers (HLLSet) from structure (Lattice)
 """
 
 from __future__ import annotations
-from typing import List, Dict, Set, Optional, Callable, Any, Tuple, Union
+from typing import List, Dict, Set, Optional, Callable, Any, Tuple, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
 import time
 import numpy as np
@@ -37,24 +86,44 @@ import numpy as np
 from .hllset import HLLSet, compute_sha1
 from .constants import P_BITS, SHARED_SEED
 
+if TYPE_CHECKING:
+    from .hrt import HLLSetLattice
+
 
 # =============================================================================
-# SECTION 1: Data Structures for Entanglement
+# SECTION 1: Data Structures for Two-Layer Architecture
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# LAYER 1: HLLSet-Level (Register Layer) - Compares register states
+# -----------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Morphism:
     """
-    Morphism between two HLLSets (ε-isomorphism).
+    Morphism between two HLLSets (register-level ε-isomorphism).
     
-    Represents φ: A → B such that |BSS(x,y) - BSS(φ(x),φ(y))| < ε
-    This is the mathematical foundation of entanglement.
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ IMPORTANT: This compares REGISTER STATES, not tokens!                   │
+    │                                                                         │
+    │ HLLSets are "anti-sets": they ABSORB tokens but DO NOT STORE them.      │
+    │ Only register states remain. Comparison is based on:                    │
+    │   - Register pattern similarity                                         │
+    │   - Estimated cardinality similarity                                    │
+    │   - Jaccard estimation (probabilistic, not exact)                       │
+    │                                                                         │
+    │ For TRUE entanglement, use LatticeMorphism (structure comparison)       │
+    └─────────────────────────────────────────────────────────────────────────┘
+    
+    Represents φ: A → B where A and B are individual HLLSets.
+    Two HLLSets are ε-isomorphic if their register patterns are similar
+    and their estimated cardinalities are within tolerance.
     """
-    source_hash: str  # Hash of source HLLSet
-    target_hash: str  # Hash of target HLLSet
-    similarity: float  # Jaccard similarity
+    source_hash: str  # Hash of source HLLSet registers
+    target_hash: str  # Hash of target HLLSet registers
+    similarity: float  # Jaccard similarity (estimated from registers)
     epsilon: float  # Tolerance for isomorphism
-    is_isomorphism: bool  # True if ε-isomorphic
+    is_isomorphism: bool  # True if registers are ε-similar
     timestamp: float = field(default_factory=time.time)
     
     @property
@@ -75,10 +144,11 @@ class SingularityReport:
     Report on network singularity status.
     
     Captures the state of an Entangled ICASRA Network.
+    Note: Entanglement here refers to LATTICE-level structural similarity.
     """
     has_singularity: bool  # Has network reached singularity?
-    entanglement_ratio: float  # Fraction of pairs that are entangled
-    coherence: float  # Overall coherence score [0, 1]
+    entanglement_ratio: float  # Fraction of lattice pairs that are structurally entangled
+    coherence: float  # Overall structural coherence score [0, 1]
     emergence_strength: float  # Strength of emergent properties
     phase: str  # "Disordered", "Critical", "Ordered", "Singularity"
     timestamp: float = field(default_factory=time.time)
@@ -91,6 +161,65 @@ class SingularityReport:
   Coherence: {self.coherence:.1%}
   Emergence: {self.emergence_strength:.3f}
 """
+
+
+# -----------------------------------------------------------------------------
+# LAYER 2: Lattice-Level (Structure Layer) - Compares lattice topology
+# -----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class LatticeMorphism:
+    """
+    Morphism between two HLLSet Lattices (structure-level ε-isomorphism).
+    
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ THIS IS TRUE ENTANGLEMENT - comparing STRUCTURES, not content!         │
+    │                                                                         │
+    │ - Compares LATTICE STRUCTURE (degree distribution, graph topology)      │
+    │ - Nodes (HLLSets) are IRRELEVANT - only structural pattern matters      │
+    │ - Two lattices can be entangled with ZERO token overlap                 │
+    └─────────────────────────────────────────────────────────────────────────┘
+    
+    From the theory:
+    - Entanglement is defined between LATTICES, not individual HLLSets
+    - ε-isomorphism measures structural similarity between lattices
+    - Lattice structure = degree distribution + morphism patterns
+    
+    Metrics:
+    - row_degree_correlation: How well row degrees align
+    - col_degree_correlation: How well column degrees align
+    - overall_structure_match: Combined structural similarity
+    - epsilon_isomorphic_prob: Probability of being ε-isomorphic
+    """
+    source_lattice_hash: str  # Hash/name of source lattice
+    target_lattice_hash: str  # Hash/name of target lattice
+    row_degree_correlation: float  # Correlation of row degree sequences
+    col_degree_correlation: float  # Correlation of column degree sequences
+    overall_structure_match: float  # Overall structural similarity
+    epsilon_isomorphic_prob: float  # Probability of ε-isomorphism
+    epsilon: float  # Tolerance for isomorphism
+    timestamp: float = field(default_factory=time.time)
+    
+    @property
+    def is_isomorphism(self) -> bool:
+        """True if lattices are structurally ε-isomorphic."""
+        return self.epsilon_isomorphic_prob >= (1.0 - self.epsilon)
+    
+    @property
+    def name(self) -> str:
+        """Content-addressed name of lattice morphism."""
+        components = [
+            self.source_lattice_hash,
+            self.target_lattice_hash,
+            f"{self.overall_structure_match:.6f}",
+            f"{self.epsilon:.6f}"
+        ]
+        return compute_sha1(":".join(components).encode())
+    
+    def __repr__(self) -> str:
+        status = "≅" if self.is_isomorphism else "≇"
+        return (f"LatticeMorphism({self.source_lattice_hash[:8]}... {status} "
+                f"{self.target_lattice_hash[:8]}..., match={self.overall_structure_match:.2%})")
 
 
 # =============================================================================
@@ -242,26 +371,90 @@ class Kernel:
             is_isomorphism=True
         )
     
-    def validate_entanglement(self, hllsets: List[HLLSet], epsilon: float = 0.05) -> Tuple[bool, float]:
+    def find_lattice_isomorphism(self, 
+                                  lattice_a: 'HLLSetLattice', 
+                                  lattice_b: 'HLLSetLattice',
+                                  epsilon: float = 0.05) -> Optional[LatticeMorphism]:
         """
-        Validate if a set of HLLSets are mutually entangled.
+        Find ε-isomorphism between two HLLSet lattices.
         
-        Checks:
-        1. Pairwise ε-isomorphisms exist
-        2. Morphisms compose (commuting diagrams)
+        Unlike find_isomorphism (which compares individual HLLSets),
+        this compares the STRUCTURE of lattices:
+        - Degree distributions (how nodes connect)
+        - Graph topology (morphism patterns)
+        - Structural alignment (correlation of degree sequences)
+        
+        Entanglement is about matching STRUCTURES, not matching NODES.
+        Two lattices may have completely different tokens but be structurally
+        isomorphic if they have similar graph topology.
+        
+        Morphism: HLLSetLattice × HLLSetLattice → LatticeMorphism | None
+        
+        Args:
+            lattice_a: Source lattice
+            lattice_b: Target lattice  
+            epsilon: Tolerance for isomorphism (default 0.05 = 5%)
+            
+        Returns:
+            LatticeMorphism if structurally similar, None otherwise
+        """
+        # Compare lattice structures
+        metrics = lattice_a.compare_lattices(lattice_b)
+        
+        # Extract structural metrics
+        row_corr = metrics['row_degree_correlation']
+        col_corr = metrics['col_degree_correlation']
+        overall_match = metrics['overall_structure_match']
+        epsilon_prob = metrics['epsilon_isomorphic_prob']
+        
+        # Check if structurally similar enough (using epsilon threshold)
+        if epsilon_prob < (1.0 - epsilon):
+            return None
+        
+        # Create lattice morphism record
+        return LatticeMorphism(
+            source_lattice_hash=compute_sha1(str(id(lattice_a)).encode()),
+            target_lattice_hash=compute_sha1(str(id(lattice_b)).encode()),
+            row_degree_correlation=row_corr,
+            col_degree_correlation=col_corr,
+            overall_structure_match=overall_match,
+            epsilon_isomorphic_prob=epsilon_prob,
+            epsilon=epsilon
+        )
+    
+    def validate_lattice_entanglement(self, 
+                                       lattices: List['HLLSetLattice'], 
+                                       epsilon: float = 0.05) -> Tuple[bool, float]:
+        """
+        Validate if multiple HLLSet lattices are mutually entangled.
+        
+        ENTANGLEMENT IS BETWEEN LATTICES, NOT HLLSETS.
+        
+        This checks structural similarity between lattice topologies:
+        1. Pairwise lattice ε-isomorphisms exist (structural matching)
+        2. Morphisms compose (commuting diagrams of structures)
         3. Structural coherence > threshold
         
-        Returns: (is_entangled, coherence_score)
+        The key insight: nodes (individual HLLSets) are IRRELEVANT.
+        What matters is the STRUCTURE - the pattern of relationships,
+        degree distributions, and graph topology.
+        
+        Args:
+            lattices: List of HLLSetLattice objects to check
+            epsilon: Tolerance for structural isomorphism (default 0.05)
+            
+        Returns:
+            (is_entangled, structural_coherence_score)
         """
-        n = len(hllsets)
+        n = len(lattices)
         if n < 2:
             return False, 0.0
         
-        # Check pairwise isomorphisms
-        morphisms = []
+        # Check pairwise lattice isomorphisms (STRUCTURAL comparison)
+        morphisms: List[LatticeMorphism] = []
         for i in range(n):
             for j in range(i + 1, n):
-                morph = self.find_isomorphism(hllsets[i], hllsets[j], epsilon)
+                morph = self.find_lattice_isomorphism(lattices[i], lattices[j], epsilon)
                 if morph is not None:
                     morphisms.append(morph)
         
@@ -270,13 +463,56 @@ class Kernel:
         actual_pairs = len(morphisms)
         entanglement_ratio = actual_pairs / expected_pairs if expected_pairs > 0 else 0.0
         
+        # Structural coherence (average structural match)
+        structural_coherence = (
+            sum(m.overall_structure_match for m in morphisms) / len(morphisms) 
+            if morphisms else 0.0
+        )
+        
+        # Entangled if > 90% pairs are structurally isomorphic and coherence > 50%
+        is_entangled = entanglement_ratio > 0.9 and structural_coherence > 0.5
+        
+        return is_entangled, structural_coherence
+    
+    def validate_entanglement(self, hllsets: List[HLLSet], epsilon: float = 0.05) -> Tuple[bool, float]:
+        """
+        DEPRECATED: Use validate_lattice_entanglement for true entanglement.
+        
+        This method checks HLLSet similarity, but entanglement is properly
+        defined between LATTICES (structures), not individual HLLSets.
+        
+        This is kept for backward compatibility and demonstrates that
+        HLLSets with non-empty intersection have some "overlap", but this
+        is NOT true entanglement in the theoretical sense.
+        
+        For proper lattice-based entanglement, use validate_lattice_entanglement().
+        
+        Returns: (has_overlap, overlap_coherence_score)
+        """
+        n = len(hllsets)
+        if n < 2:
+            return False, 0.0
+        
+        # Check pairwise isomorphisms (this is OVERLAP, not true entanglement)
+        morphisms = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                morph = self.find_isomorphism(hllsets[i], hllsets[j], epsilon)
+                if morph is not None:
+                    morphisms.append(morph)
+        
+        # Calculate overlap ratio
+        expected_pairs = n * (n - 1) // 2
+        actual_pairs = len(morphisms)
+        overlap_ratio = actual_pairs / expected_pairs if expected_pairs > 0 else 0.0
+        
         # Coherence score (average similarity)
         coherence = sum(m.similarity for m in morphisms) / len(morphisms) if morphisms else 0.0
         
-        # Entangled if > 90% pairs are isomorphic and coherence > 50%
-        is_entangled = entanglement_ratio > 0.9 and coherence > 0.5
+        # High overlap if > 90% pairs overlap and coherence > 50%
+        has_overlap = overlap_ratio > 0.9 and coherence > 0.5
         
-        return is_entangled, coherence
+        return has_overlap, coherence
     
     def reproduce(self, parent: HLLSet, mutation_rate: float = 0.1) -> HLLSet:
         """

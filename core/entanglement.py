@@ -2,18 +2,43 @@
 """
 Entanglement for Manifold OS - Lattice-Based Implementation
 
+================================================================================
+IMPORTANT: HLLSets are NOT sets containing tokens!
+================================================================================
+
+HLLSets are probabilistic register structures ("anti-sets") that:
+- ABSORB tokens (hash them into registers)
+- DO NOT STORE tokens (only register states remain)
+- BEHAVE LIKE sets (union, intersection, cardinality estimation)
+- ARE NOT sets (no element retrieval, no membership test)
+
+================================================================================
+TWO-LAYER ARCHITECTURE: This module operates at the LATTICE LAYER
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ENTANGLEMENT IS BETWEEN LATTICES, NOT HLLSets!                              │
+│                                                                             │
+│ Layer 1 (HLLSet/Register): Individual register arrays, cardinality est.    │
+│ Layer 2 (Lattice/Structure): Graph topology, degree distributions ← HERE   │
+│                                                                             │
+│ This module implements Layer 2 - TRUE ENTANGLEMENT                          │
+│ Individual HLLSets are IRRELEVANT - only STRUCTURE matters                  │
+│ Two lattices can be entangled even from completely different inputs         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
 Based on "The Trinity of Emergence" from dao_manifold.pdf:
-- Entanglement as Measurement: M(H1, H2) = structural similarity
+- Entanglement as Measurement: M(L1, L2) = structural similarity of LATTICES
 - Lattice W is prior, entanglement is map W(1) → W(2)
 - Endomorphism W → W with finite lattices
-- Nodes connected by similar degrees (cardinality)
-- Maximizes pairs (w(1), w(2))
+- Nodes connected by similar degrees (cardinality/topology)
+- Maximizes structural pairs between lattices
 
 Key Principles:
 - Consistency prior to precision
 - Lattice W guarantees finiteness
-- Entanglement morphism connects similar-degree nodes
-- Maximizes matching pairs between lattices
+- Entanglement morphism connects similar-DEGREE nodes (not similar registers)
+- Maximizes matching pairs between lattice STRUCTURES
 
 Fundamental Consistency Criterion (Categorical):
     For any a ≠ b in L₁, the mapping m(a) ≉ m(b) in L₂
@@ -21,14 +46,13 @@ Fundamental Consistency Criterion (Categorical):
     This preserves distinctness (approximate injectivity).
     Due to hash collisions, we use approximate measures (≉) instead of strict equality.
     
-    BSS (Basic Similarity Score) is ONE implementation of this criterion.
-    Alternative measures can be used as long as they preserve structure:
-    - Degree similarity (cardinality-based)
-    - Register overlap (HLLSet intersection)
-    - Custom domain-specific metrics
+    Structural measures used:
+    - Degree similarity (estimated cardinality-based)
+    - Graph topology correlation
+    - Register pattern overlap (secondary, for refinement)
     
-    The core requirement: mapping should preserve structural topology
-    by maintaining distinctness between distinct elements.
+    The core requirement: mapping should preserve STRUCTURAL TOPOLOGY
+    by maintaining degree patterns between lattices.
 """
 
 from __future__ import annotations
