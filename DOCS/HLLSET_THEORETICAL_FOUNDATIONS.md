@@ -26,6 +26,23 @@ This theoretical framework has implications for cross-cultural comparison, scien
 
 ---
 
+## HLL vs HLLSet: Clarifications
+
+- **HLL (HyperLogLog)**: a probabilistic algorithm for cardinality estimation. It stores compact sketches (max-zero counts) that summarize set cardinalities but do not support exact set semantics.
+- **HLLSet (HyperLogLog Set)**: a data-structure and theoretical object built on fixed-size binary register arrays that enables approximate set operations, lattice construction, and categorical reasoning. An HLLSet is *derived from* token observations via a morphism but it does not itself contain or enumerate the original tokens.
+
+Key formal notes (applies to all documents in this repository):
+
+1. **Two minimal requirements for a binary vector to validly represent an HLLSet**:
+
+  - The token→HLL morphism must be *idempotent*: applying the encoding repeatedly yields the same HLLSet (re-hashing or re-ingesting the same token set is stable). This guarantees content-addressability and aligns with the Karoubi/idempotent viewpoint.
+  - The hash/encoding must be *random and unbiased* (no heavy-tailed or shifted distribution such as a Normal that systematically skews bucket occupation). Informally: the encoder should behave like a random-oracle on token identity; biased encodings can break the statistical assumptions used when detecting structural isomorphism (entanglement).
+
+2. **No direct inversion guarantee**: An HLLSet is not a container of original elements. Because multiple token multisets can map to the same HLLSet (many-to-one), recovering tokens requires a disambiguation procedure. Practical systems therefore implement an explicit disambiguation or triangulation stage that leverages multi-seed encodings and structural (entanglement) constraints to infer likely token sets.
+
+3. **Operational consequence**: When we speak of entanglement or isomorphic sublattices, we refer to *structural relationships* between HLLSet lattices, not the presence of identical token lists. The disambiguation algorithm is the operational mechanism that bridges HLLSet observations and token-level interpretation, and it should be designed to respect the two requirements above.
+
+
 ## 1. Category HLL: The Foundational Structure
 
 ### 1.1 The HLL Category

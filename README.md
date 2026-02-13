@@ -1,8 +1,8 @@
 # HLLSet Manifold
 
->**Probabilistic Knowledge Representation with HyperLogLog Lattices**
+>**Probabilistic Knowledge Representation with HLLSet Lattices**
 
-A Python library for building evolving knowledge structures using HyperLogLog sketches, lattice morphisms, and predictive projection.
+A Python library for building evolving knowledge structures using HLLSets, lattice morphisms, and predictive projection.
 
 ---
 
@@ -10,7 +10,7 @@ A Python library for building evolving knowledge structures using HyperLogLog sk
 
 HLLSet Manifold implements a novel approach to knowledge representation where:
 
-- **Knowledge is probabilistic** - Using HyperLogLog (HLL) sketches as compact "fingerprints" of token sets
+- **Knowledge is probabilistic** - Using HLLSets as compact "fingerprints" of token sets
 - **Structure evolves** - Hash Relational Tensors (HRT) track state transitions with full history
 - **Predictions are explicit** - Project future states from current lattice structure via morphisms
 - **Everything is immutable** - Content-addressed structures enable fearless parallelization

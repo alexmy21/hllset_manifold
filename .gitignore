@@ -7,9 +7,12 @@ __pycache__/
 *.so
 *.json
 *.duckdb
+*.roaring
+*.blob
 
 
 # Distribution / packaging
+PUBS/*
 data/*
 .manifold_storage/*
 .api_key.txt

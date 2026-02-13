@@ -213,7 +213,8 @@ class HLLCatalog:
         db_path = Path(db_path)
         catalog = cls(db_name=db_path.stem, p_bits=p_bits)
 
-        conn = duckdb.connect(str(db_path), read_only=True)
+        # Use config to allow concurrent access when another process holds lock
+        conn = duckdb.connect(str(db_path), read_only=True) #, config={'access_mode': 'read_only'})
 
         # Discover tables
         table_names = [r[0] for r in conn.execute("""
