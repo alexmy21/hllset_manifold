@@ -89,6 +89,26 @@ from .algebra import (
     TableProfile,
 )
 
+from .entanglement import (
+    # Fragment-based (structural)
+    EntanglementFragment,
+    EntanglementSubgraph,
+    ExtendedEntanglement,
+    CommonSubgraphExtractor,
+    extract_entanglement,
+    # Morphism-based
+    EntanglementMeasurement,
+    EntanglementMorphism,
+    EntanglementEngine,
+    # N-Edge based (stochastic) - NEW
+    EdgeSignature,
+    NEdgePath,
+    EdgeLUT,
+    NEdgeEntanglement,
+    NEdgeExtractor,
+    compute_nedge_entanglement,
+)
+
 __all__ = [
     # HLLSet
     'HLLSet',
@@ -126,6 +146,23 @@ __all__ = [
     'QueryResult',
     'ColumnProfile',
     'TableProfile',
+    
+    # Entanglement (Common Subgraph Extraction)
+    'EntanglementFragment',
+    'EntanglementSubgraph',
+    'ExtendedEntanglement',
+    'CommonSubgraphExtractor',
+    'extract_entanglement',
+    'EntanglementMeasurement',
+    'EntanglementMorphism',
+    'EntanglementEngine',
+    # N-Edge Entanglement (Stochastic)
+    'EdgeSignature',
+    'NEdgePath',
+    'EdgeLUT',
+    'NEdgeEntanglement',
+    'NEdgeExtractor',
+    'compute_nedge_entanglement',
 ]
 
 __version__ = "0.2.0"

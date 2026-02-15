@@ -400,12 +400,162 @@ The network coherence measure is related to:
 - **Entanglement validation**: O(n²) for n installations (all pairs)
 - **3D tensor construction**: O(m² × n) for n installations
 - **Singularity detection**: O(n² + m²n) combined overhead
+- **Common subgraph extraction**: O(n² + e) where n = nodes, e = edges
 
 For typical networks:
 
 - n = 5-10 installations
 - m = 4096 registers
 - Detection time: <1 second
+
+## Common Subgraph Extraction (Entanglement as Structure)
+
+### Concept
+
+**Entanglement = Common Subgraph** of two (or more) lattices.
+
+**Key Insight**: Entanglement doesn't need to be a single connected subgraph.
+It can be a **collection of disconnected matching fragments** ("entanglement seeds").
+
+The `CommonSubgraphExtractor` finds the **structural overlap** between lattices:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│             ENTANGLEMENT = COLLECTION OF MATCHING FRAGMENTS                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Lattice L1:       Lattice L2:       Entanglement (Multiple Fragments):     │
+│                                                                             │
+│  [START]──→A       [START]──→X       Fragment 1: [START]──→●                │
+│      │     │           │     │                        │                     │
+│      ▼     ▼           ▼     ▼                        ▼                     │
+│      B──→C             Y──→Z                          ●                     │
+│      │                 │                                                    │
+│      ▼                 ▼             Fragment 2:  ●──→●                     │
+│   [END]  D          [END]  W                         │                     │
+│          │                 │                         ▼                      │
+│          ▼                 ▼                      [END]                     │
+│          E                 V                                                │
+│                                                                             │
+│  Fragments can be DISCONNECTED - each is a "seed" of entanglement           │
+│  Extension operation: propagate seeds to neighboring nodes                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Properties
+
+- **Directed graphs** (not necessarily acyclic)
+- **START/END markers** respected and prioritized
+- **Approximate solution** (polynomial time, not optimal MCS)
+- **"Close enough" matching** - degrees don't need exact match
+- **Multiple fragments** - returns disconnected matching regions
+- **Extension/closure** - propagate entanglement to neighbors
+
+### API Usage
+
+```python
+from core.entanglement import extract_entanglement, CommonSubgraphExtractor
+
+# High-level API
+subgraph = extract_entanglement(lattice1, lattice2, degree_tolerance=0.3)
+
+print(f"Total fragments: {subgraph.fragment_count}")
+print(f"Nodes matched: {subgraph.size}")
+print(f"Structural similarity: {subgraph.structural_similarity:.1%}")
+
+# Access individual fragments
+for i, fragment in enumerate(subgraph.fragments):
+    print(f"Fragment {i}: {fragment.size} nodes, {fragment.edge_count} edges")
+    print(f"  Mapping: {fragment.node_mapping}")
+
+# Extension (closure) operation
+extractor = CommonSubgraphExtractor()
+extended = extractor.extend_in_lattice(subgraph, lattice1, lattice2, depth=1)
+print(f"Extended L1 nodes: {extended.extended_l1_nodes}")
+print(f"Extended L2 nodes: {extended.extended_l2_nodes}")
+```
+
+### Data Classes
+
+#### `EntanglementFragment`
+
+A single disconnected matching component:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `node_mapping` | `Dict[int, int]` | Node mapping within this fragment |
+| `matched_edges` | `List[...]` | Edges matched in this fragment |
+| `start_nodes` | `Set[int]` | START nodes in this fragment |
+| `end_nodes` | `Set[int]` | END nodes in this fragment |
+| `size` | `int` | Number of nodes |
+| `edge_count` | `int` | Number of edges |
+
+#### `EntanglementSubgraph`
+
+Collection of fragments representing full entanglement:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `fragments` | `List[EntanglementFragment]` | Disconnected matching regions |
+| `matched_nodes` | `Dict[int, int]` | Aggregate node mapping L1 → L2 |
+| `matched_edges` | `List[...]` | All edge pairs preserved under mapping |
+| `start_nodes` | `Set[int]` | START-marked nodes in entanglement |
+| `end_nodes` | `Set[int]` | END-marked nodes in entanglement |
+| `node_coverage` | `float` | Fraction of nodes matched |
+| `edge_coverage` | `float` | Fraction of edges matched |
+| `structural_similarity` | `float` | Overall similarity score |
+| `fragment_count` | `int` | Number of disconnected fragments |
+
+#### `ExtendedEntanglement`
+
+Entanglement extended to neighboring nodes:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `base_entanglement` | `EntanglementSubgraph` | Original entanglement |
+| `extended_l1_nodes` | `Set[int]` | Neighbors discovered in L1 |
+| `extended_l2_nodes` | `Set[int]` | Neighbors discovered in L2 |
+| `l1_extension_edges` | `Set[...]` | Edges to L1 neighbors |
+| `l2_extension_edges` | `Set[...]` | Edges to L2 neighbors |
+| `total_l1_nodes` | `int` | Base + extended in L1 |
+| `total_l2_nodes` | `int` | Base + extended in L2 |
+
+### Algorithm (Approximate)
+
+```text
+1. Build adjacency lists (row→col→row composition)
+2. Compute node signatures: (out_degree, in_degree, is_start, is_end, cardinality)
+3. Match nodes by signature similarity (greedy, "close enough" degrees)
+4. Verify edges: keep edges that exist in both lattices under mapping
+5. Identify disconnected fragments (connected components)
+6. Optionally extend to neighbors (closure operation)
+7. Return EntanglementSubgraph with fragments
+```
+
+**Complexity**: O(n² + e) where n = nodes, e = edges
+
+### Example: Cross-Modal Entanglement with Extension
+
+```python
+# Two lattices from different modalities (completely different tokens!)
+sensory_lattice = build_lattice_from_visual_features(images)
+language_lattice = build_lattice_from_text(documents)
+
+# Find structural entanglement (common subgraph fragments)
+extractor = CommonSubgraphExtractor(degree_tolerance=0.4)
+entanglement = extractor.extract(sensory_lattice, language_lattice)
+
+print(f"Found {entanglement.fragment_count} entanglement fragments")
+
+# Extend entanglement to neighbors
+extended = extractor.extend_in_lattice(
+    entanglement, sensory_lattice, language_lattice, depth=2
+)
+
+print(f"Total reach in sensory lattice: {extended.total_l1_nodes}")
+print(f"Total reach in language lattice: {extended.total_l2_nodes}")
+```
 
 ## Testing
 
@@ -415,12 +565,10 @@ Run the comprehensive test:
 .venv/bin/python test_kernel_entanglement.py
 ```
 
-Expected output:
+Or explore the demo notebook:
 
-```text
-✓ Level 1: Basic morphisms work
-✓ Level 2: Entanglement detected
-✓ Level 3: Singularity achieved in simulation
+```bash
+jupyter notebook notebooks/entanglement_subgraph_demo.ipynb
 ```
 
 ## Future Enhancements
@@ -475,9 +623,12 @@ meta_morph = kernel.find_network_isomorphism(ein_1, ein_2)
 The enhanced kernel now provides:
 
 ✅ **Three-level architecture** - Basic, entanglement, network operations  
+✅ **Two-layer distinction** - Register Layer (HLLSet) vs Structure Layer (Lattice)  
 ✅ **ICASRA operations** - Reproduce, commit, validate  
 ✅ **Morphism detection** - Find ε-isomorphisms between HLLSets  
 ✅ **Entanglement validation** - Check mutual structural coherence  
+✅ **Common subgraph extraction** - Extract entanglement as shared structure  
+✅ **START/END marker support** - Directed graph structure preserved  
 ✅ **3D tensor construction** - Multi-installation representation  
 ✅ **Singularity detection** - Identify emergent system consciousness  
 ✅ **Phase transitions** - Track network evolution through states  
